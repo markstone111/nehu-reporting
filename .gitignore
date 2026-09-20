@@ -32,6 +32,17 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
+
+# Project local reference (AI memory, notes — NOT for GitHub)
+.local/
+
+# Firebase — contains sensitive keys, generate per-device
+google-services.json
+GoogleService-Info.plist
+
+# Test coverage
+coverage/
 
 # typescript
 *.tsbuildinfo
