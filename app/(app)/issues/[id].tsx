@@ -14,10 +14,10 @@ import { Card } from '@/components/common/Card';
 import { StatusChip } from '@/components/common/StatusChip';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
+import { Timeline } from '@/components/issue';
 import { useIssueDetail } from '@/hooks/useIssues';
 import { getCategoryById } from '@/constants/categories';
-import { formatDateTime, timeAgo } from '@/utils/date.utils';
-import { statusToLabel } from '@/utils/text.utils';
+import { formatDateTime } from '@/utils/date.utils';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '@/constants/theme';
 
 export default function IssueDetailScreen() {
@@ -145,48 +145,7 @@ export default function IssueDetailScreen() {
             <Text style={styles.timelineSectionTitle}>Grievance Timeline</Text>
           </View>
 
-          {issue.timeline && issue.timeline.length > 0 ? (
-            <View style={styles.timelineContainer}>
-              {issue.timeline.map((item, index) => {
-                const isLast = index === issue.timeline!.length - 1;
-                return (
-                  <View key={item.id} style={styles.timelineItem}>
-                    {/* Timeline vertical node */}
-                    <View style={styles.nodeColumn}>
-                      <View
-                        style={[
-                          styles.timelineDot,
-                          isLast ? styles.timelineDotActive : styles.timelineDotDone,
-                        ]}
-                      />
-                      {!isLast && <View style={styles.timelineLine} />}
-                    </View>
-
-                    {/* Timeline Content */}
-                    <View style={styles.timelineContent}>
-                      <View style={styles.timelineHeader}>
-                        <Text style={styles.timelineTitle}>
-                          {item.title ?? statusToLabel(item.event)}
-                        </Text>
-                        <Text style={styles.timelineTime}>{timeAgo(item.timestamp)}</Text>
-                      </View>
-                      <Text style={styles.timelineDesc}>{item.message}</Text>
-                      <Text style={styles.timelineAuthor}>
-                        By: {item.actorName ?? item.actor.toUpperCase()}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={styles.emptyTimeline}>
-              <Text style={styles.emptyTimelineText}>
-                Your report has been queued for administrative triage. Status changes will appear
-                here.
-              </Text>
-            </View>
-          )}
+          <Timeline events={issue.timeline ?? []} currentStatus={issue.status} />
         </Card>
 
         {/* Helpdesk Notice */}
@@ -371,78 +330,6 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.gray900,
     marginLeft: SPACING.xs,
-  },
-  timelineContainer: {
-    paddingLeft: SPACING.xs,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-  },
-  nodeColumn: {
-    alignItems: 'center',
-    width: 20,
-    marginRight: SPACING.md,
-  },
-  timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginTop: 4,
-  },
-  timelineDotActive: {
-    backgroundColor: COLORS.primary,
-    borderWidth: 2,
-    borderColor: COLORS.primarySubtle,
-  },
-  timelineDotDone: {
-    backgroundColor: COLORS.success,
-  },
-  timelineLine: {
-    width: 2,
-    flex: 1,
-    backgroundColor: COLORS.gray200,
-    marginVertical: 2,
-  },
-  timelineContent: {
-    flex: 1,
-    paddingBottom: SPACING.lg,
-  },
-  timelineHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  timelineTitle: {
-    fontFamily: TYPOGRAPHY.fontFamily.semiBold,
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.gray900,
-  },
-  timelineTime: {
-    fontFamily: TYPOGRAPHY.fontFamily.regular,
-    fontSize: 11,
-    color: COLORS.gray400,
-  },
-  timelineDesc: {
-    fontFamily: TYPOGRAPHY.fontFamily.regular,
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.gray600,
-    lineHeight: TYPOGRAPHY.fontSize.xs * 1.4,
-    marginBottom: 2,
-  },
-  timelineAuthor: {
-    fontFamily: TYPOGRAPHY.fontFamily.medium,
-    fontSize: 10,
-    color: COLORS.gray400,
-  },
-  emptyTimeline: {
-    paddingVertical: SPACING.md,
-  },
-  emptyTimelineText: {
-    fontFamily: TYPOGRAPHY.fontFamily.regular,
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.gray500,
-    lineHeight: TYPOGRAPHY.fontSize.xs * 1.4,
   },
   supportFooter: {
     flexDirection: 'row',
