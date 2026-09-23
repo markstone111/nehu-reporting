@@ -23,7 +23,8 @@ export function Timeline({ events, currentStatus }: TimelineProps) {
         <Ionicons name="time-outline" size={24} color={COLORS.gray400} />
         <Text style={styles.emptyTitle}>Grievance Queued</Text>
         <Text style={styles.emptyText}>
-          Your report has been queued for administrative triage. Status updates will appear here in real time.
+          Your report has been queued for administrative triage. Status updates will appear here in
+          real time.
         </Text>
       </View>
     );
@@ -46,14 +47,7 @@ export function Timeline({ events, currentStatus }: TimelineProps) {
           const isLast = index === lastIndex;
           const isCurrent = isLast && !isResolved;
 
-          return (
-            <TimelineStep
-              key={item.id}
-              event={item}
-              isLast={isLast}
-              isCurrent={isCurrent}
-            />
-          );
+          return <TimelineStep key={item.id} event={item} isLast={isLast} isCurrent={isCurrent} />;
         })}
       </View>
 
@@ -61,9 +55,7 @@ export function Timeline({ events, currentStatus }: TimelineProps) {
       {isResolved ? (
         <View style={styles.resolvedFooter}>
           <Ionicons name="checkmark-done-circle" size={20} color={COLORS.success} />
-          <Text style={styles.resolvedFooterText}>
-            Grievance successfully resolved and closed.
-          </Text>
+          <Text style={styles.resolvedFooterText}>Grievance successfully resolved and closed.</Text>
         </View>
       ) : (
         <View style={styles.pendingFooter}>

@@ -1,6 +1,7 @@
 # NEHU Mobile App — Task Tracker
 
 ## Phase 1 — Project Scaffolding & Core Infrastructure ✅
+
 - [x] Scaffold Expo project (blank TypeScript template)
 - [x] Install all core dependencies
 - [x] Configure path aliases (@/ → src/)
@@ -25,6 +26,7 @@
 - [x] TypeScript check: 0 errors
 
 ## Phase 2 — Authentication ✅
+
 - [x] docs/id_card_image_from_app_to_backend.md — full ID card lifecycle doc
 - [x] src/utils/error.utils.ts — normalized error strings & messages
 - [x] src/services/image.service.ts — camera/gallery ID card picker & manipulator compression
@@ -39,10 +41,12 @@
 - [x] TypeScript check: 0 errors
 
 ## Phase 3 — Common Components & Design System ✅
+
 - [x] Button, Input, Badge, Card, Avatar, StatusChip
 - [x] ScreenWrapper, Header layout components
 
 ## Phase 4 — Home + Issue List & Details ✅
+
 - [x] src/api/issues.api.ts — verified contract endpoints
 - [x] src/hooks/useIssues.ts — TanStack Query hooks with demo fallbacks
 - [x] src/components/issue/IssueCard.tsx — Canva-inspired card with status, category, location, time
@@ -55,31 +59,37 @@
 - [x] TypeScript check: 0 errors
 
 ## Phase 5 — Issue Timeline ✅
+
 - [x] Timeline + TimelineStep components
 - [x] Integrate into Issue detail screen
 
-## Phase 6 — Standard Report Form
-- [ ] Location service (Expo Location + reverse geocode)
-- [ ] Category picker component
-- [ ] Full report form (word count, category, location, attachment placeholder)
+## Phase 6 — Standard Report Form ✅
+
+- [x] Location service (Expo Location + reverse geocode)
+- [x] Category picker component
+- [x] Full report form (word count, category, location, attachment placeholder)
 
 ## Phase 7 — AI Chatbot Reporter
+
 - [ ] Chatbot types + session state machine
 - [ ] src/api/chatbot.api.ts
 - [ ] ChatBubble, ChatInput, TypingIndicator components
 - [ ] Full chatbot screen + draft review card
 
 ## Phase 8 — Notifications
+
 - [ ] FCM service setup
 - [ ] Notification history screen
 - [ ] In-app foreground toast
 - [ ] Deep link handler
 
 ## Phase 9 — Profile + Dev Settings
+
 - [ ] Profile screen
 - [ ] Long-press → backend URL modal (hidden)
 
 ## Phase 10 — Docs, Tests, CI
+
 - [ ] All docs/ files
 - [ ] Unit tests (Jest + RNTL)
 - [ ] E2E flows (Maestro)

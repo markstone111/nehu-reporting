@@ -69,11 +69,7 @@ const EVENT_CONFIGS: Record<IssueStatus | 'COMMENT', EventConfig> = {
   },
 };
 
-export function TimelineStep({
-  event,
-  isLast,
-  isCurrent = false,
-}: TimelineStepProps) {
+export function TimelineStep({ event, isLast, isCurrent = false }: TimelineStepProps) {
   const config = EVENT_CONFIGS[event.event] ?? EVENT_CONFIGS.SUBMITTED;
   const stepTitle = event.title ?? statusToLabel(event.event);
   const actorRole = capitalize(event.actor);
@@ -105,16 +101,16 @@ export function TimelineStep({
           <Ionicons name={config.icon} size={15} color={config.color} />
         </View>
 
-        {!isLast && <View style={[styles.connectingLine, isCurrent && styles.connectingLineActive]} />}
+        {!isLast && (
+          <View style={[styles.connectingLine, isCurrent && styles.connectingLineActive]} />
+        )}
       </View>
 
       {/* Content column */}
       <View style={[styles.contentColumn, !isLast && styles.contentSpacing]}>
         {/* Step Header */}
         <View style={styles.headerRow}>
-          <Text style={[styles.stepTitle, isCurrent && styles.stepTitleCurrent]}>
-            {stepTitle}
-          </Text>
+          <Text style={[styles.stepTitle, isCurrent && styles.stepTitleCurrent]}>{stepTitle}</Text>
           <Text style={styles.timeAgoText}>{timeAgo(event.timestamp)}</Text>
         </View>
 

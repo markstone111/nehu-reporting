@@ -17,13 +17,14 @@ The mobile app includes a **Resolution Timeline** in the Issue Detail screen. Ev
 ## 2. Recommended Database Schema (PostgreSQL)
 
 ### `issues` table
+
 ```sql
 CREATE TABLE issues (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id),
     title VARCHAR(120) NOT NULL,
     description TEXT NOT NULL,
-    status VARCHAR(30) NOT NULL DEFAULT 'SUBMITTED', 
+    status VARCHAR(30) NOT NULL DEFAULT 'SUBMITTED',
     -- 'SUBMITTED', 'UNDER_REVIEW', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'ESCALATED'
     category VARCHAR(50) NOT NULL,
     subcategory VARCHAR(50),
@@ -42,11 +43,12 @@ CREATE TABLE issues (
 ```
 
 ### `issue_timeline_events` table
+
 ```sql
 CREATE TABLE issue_timeline_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
-    event VARCHAR(30) NOT NULL, 
+    event VARCHAR(30) NOT NULL,
     -- 'SUBMITTED', 'UNDER_REVIEW', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'ESCALATED', 'COMMENT'
     message TEXT NOT NULL,
     actor VARCHAR(20) NOT NULL, -- 'user', 'admin', 'system'
@@ -63,15 +65,15 @@ CREATE INDEX idx_timeline_issue_id ON issue_timeline_events(issue_id, created_at
 
 When building the Go backend logic, trigger timeline entries automatically as follows:
 
-| Stage | Trigger Condition | Example `event` | Example `message` | `actor` |
-|---|---|---|---|---|
-| **1. Submission** | On `POST /issues` | `SUBMITTED` | "Grievance submitted by student." | `user` |
-| **2. Triage** | Admin opens & reviews | `UNDER_REVIEW` | "Report reviewed and verified by Proctor Office." | `admin` |
-| **3. Delegation** | Admin assigns dept/officer | `ASSIGNED` | "Assigned to Estate Maintenance Team (Technician: B. Sangma)." | `admin` |
-| **4. In Action** | Work/repair begins | `IN_PROGRESS` | "Inspection in progress. Replacement heating element requested." | `admin` |
-| **5. Resolution** | Work completed | `RESOLVED` | "Heating coil replaced. Hot water service verified and restored." | `admin` |
-| **6. Closure** | Student confirms or after 7 days | `CLOSED` | "Issue closed upon student confirmation." | `system` / `user` |
-| **Escalation** | Exceeds SLA timeframe | `ESCALATED` | "Issue escalated to Dean of Student Welfare due to delay." | `system` |
+| Stage             | Trigger Condition                | Example `event` | Example `message`                                                 | `actor`           |
+| ----------------- | -------------------------------- | --------------- | ----------------------------------------------------------------- | ----------------- |
+| **1. Submission** | On `POST /issues`                | `SUBMITTED`     | "Grievance submitted by student."                                 | `user`            |
+| **2. Triage**     | Admin opens & reviews            | `UNDER_REVIEW`  | "Report reviewed and verified by Proctor Office."                 | `admin`           |
+| **3. Delegation** | Admin assigns dept/officer       | `ASSIGNED`      | "Assigned to Estate Maintenance Team (Technician: B. Sangma)."    | `admin`           |
+| **4. In Action**  | Work/repair begins               | `IN_PROGRESS`   | "Inspection in progress. Replacement heating element requested."  | `admin`           |
+| **5. Resolution** | Work completed                   | `RESOLVED`      | "Heating coil replaced. Hot water service verified and restored." | `admin`           |
+| **6. Closure**    | Student confirms or after 7 days | `CLOSED`        | "Issue closed upon student confirmation."                         | `system` / `user` |
+| **Escalation**    | Exceeds SLA timeframe            | `ESCALATED`     | "Issue escalated to Dean of Student Welfare due to delay."        | `system`          |
 
 ---
 
@@ -142,14 +144,14 @@ When the mobile app requests `GET /issues/:id`, the Go backend should return the
 
 ## 5. Field Types & Validation Summary
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `string` (UUID) | Unique timeline event ID |
-| `event` | `string` (Enum) | One of: `SUBMITTED`, `UNDER_REVIEW`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`, `ESCALATED`, `COMMENT` |
-| `message` | `string` | 1-2 sentence human description of what action occurred |
-| `timestamp` | `string` (ISO 8601) | e.g. `2026-09-21T10:30:00Z` |
-| `actor` | `string` (Enum) | `'user'` \| `'admin'` \| `'system'` |
-| `actorName` | `string` | Display name of the person or department performing the step |
+| Field       | Type                | Description                                                                                                  |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `id`        | `string` (UUID)     | Unique timeline event ID                                                                                     |
+| `event`     | `string` (Enum)     | One of: `SUBMITTED`, `UNDER_REVIEW`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`, `ESCALATED`, `COMMENT` |
+| `message`   | `string`            | 1-2 sentence human description of what action occurred                                                       |
+| `timestamp` | `string` (ISO 8601) | e.g. `2026-09-21T10:30:00Z`                                                                                  |
+| `actor`     | `string` (Enum)     | `'user'` \| `'admin'` \| `'system'`                                                                          |
+| `actorName` | `string`            | Display name of the person or department performing the step                                                 |
 
 ---
 

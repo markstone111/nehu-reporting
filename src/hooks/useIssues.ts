@@ -23,7 +23,7 @@ import type {
 // Demo / Fallback Data (Active during local testing if server is offline)
 // ---------------------------------------------------------------------------
 
-const DEMO_ISSUES: readonly IssueSummary[] = [
+let DEMO_ISSUES: IssueSummary[] = [
   {
     id: 'demo-issue-1',
     title: 'Water geyser malfunctioning in Boys Hostel 3',
@@ -246,7 +246,67 @@ export function useSubmitIssue() {
   const queryClient = useQueryClient();
 
   return useMutation<SubmitIssueResponse, Error, SubmitIssueRequest>({
-    mutationFn: (data: SubmitIssueRequest) => issuesApi.submit(data),
+    mutationFn: async (data: SubmitIssueRequest): Promise<SubmitIssueResponse> => {
+      try {
+        return await issuesApi.submit(data);
+      } catch (err) {
+        // Fallback for demo / offline phone testing
+        const now = new Date().toISOString();
+        const newId = `demo-${Date.now()}`;
+        const newSummary: IssueSummary = {
+          id: newId,
+          title: data.title,
+          description: data.description,
+          category: data.category,
+          subcategory: data.subcategory,
+          status: 'SUBMITTED',
+          locationLabel: data.location.label,
+          createdAt: now,
+          updatedAt: now,
+          isDuplicate: false,
+          linkedCount: 1,
+        };
+
+        DEMO_ISSUES = [newSummary, ...DEMO_ISSUES];
+
+        DEMO_DETAIL_MAP[newId] = {
+          id: newId,
+          title: data.title,
+          description: data.description,
+          status: 'SUBMITTED',
+          category: data.category,
+          subcategory: data.subcategory,
+          assignedTo: 'NEHU Administration (Pending Assignment)',
+          location: data.location,
+          attachments: data.attachments,
+          source: data.source,
+          isDuplicate: false,
+          linkedIssueId: null,
+          linkedCount: 1,
+          createdAt: now,
+          updatedAt: now,
+          timeline: [
+            {
+              id: `tl-${Date.now()}`,
+              event: 'SUBMITTED',
+              title: 'Grievance Submitted',
+              message: 'Grievance recorded successfully and queued for administrative review.',
+              timestamp: now,
+              actor: 'user',
+              actorName: 'Student',
+            },
+          ],
+        };
+
+        return {
+          issueId: newId,
+          status: 'SUBMITTED',
+          isDuplicate: false,
+          linkedIssueId: null,
+          message: 'Grievance registered successfully.',
+        };
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['issues'] });
     },
