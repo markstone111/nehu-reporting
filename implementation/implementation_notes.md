@@ -2,19 +2,20 @@
 
 ## Finalized Decisions (2026-09-21)
 
-| Decision | Choice |
-|---|---|
-| Duplicate UX | Silent link → show toast "Your report was linked to an existing issue" |
-| Anonymous reporting | NOT allowed — full identity always required |
-| ID card upload | One-time at registration only |
-| Chatbot language | English only (handle informal/WhatsApp-style text) |
-| File attachments | Future — scaffold exists, button shows "Coming Soon" |
-| Backend URL setting | Long-press version text in Profile → modal |
-| LLM keys | Server-side only (FastAPI) |
+| Decision            | Choice                                                                 |
+| ------------------- | ---------------------------------------------------------------------- |
+| Duplicate UX        | Silent link → show toast "Your report was linked to an existing issue" |
+| Anonymous reporting | NOT allowed — full identity always required                            |
+| ID card upload      | One-time at registration only                                          |
+| Chatbot language    | English only (handle informal/WhatsApp-style text)                     |
+| File attachments    | Future — scaffold exists, button shows "Coming Soon"                   |
+| Backend URL setting | Long-press version text in Profile → modal                             |
+| LLM keys            | Server-side only (FastAPI)                                             |
 
 ## Phase Completion Log
 
 ### Phase 1 — Scaffolding & Core Infrastructure ✅
+
 - Expo SDK 57, blank TypeScript template
 - Expo Router v3, Zustand, TanStack Query, Axios
 - expo-secure-store, expo-location, expo-image-picker, expo-font
@@ -25,6 +26,7 @@
 - Full folder structure created
 
 **Files created:**
+
 - `tsconfig.json` — strict TS + @/ alias
 - `babel.config.js` — reanimated plugin last
 - `app.json` — expo config with all plugins
@@ -32,6 +34,7 @@
 - `.gitignore` — added .local/, .env, google-services.json
 
 **src/ files:**
+
 - `constants/theme.ts` — full design system
 - `constants/limits.ts` — all payload limits
 - `constants/categories.ts` — issue category taxonomy
@@ -48,12 +51,14 @@
 - `utils/validation.utils.ts` — form validators
 
 **app/ files:**
+
 - `_layout.tsx` — root layout (fonts, QueryClient, GestureHandler)
 - `(auth)/_layout.tsx` — auth route guard
 - `(app)/_layout.tsx` — protected layout + tab navigator
 - All placeholder screens for all routes
 
 ### Phase 2 — Authentication Screens & Verification ✅
+
 - Documented ID card pipeline in `docs/id_card_image_from_app_to_backend.md`
 - Installed `@expo/vector-icons` for professional native icons (Ionicons)
 - `src/utils/error.utils.ts` — friendly normalized error parser
@@ -68,12 +73,14 @@
 - TypeScript check: **0 errors**
 
 ### Phase 3 — Common Components & Design System Polish ✅
+
 - `src/components/common/Badge.tsx` — Semantic badges (primary, secondary, success, warning, error, info, neutral)
 - `src/components/common/StatusChip.tsx` — Grievance status indicator with colored dot mapping to all 7 IssueStatus values
 - `src/components/common/Avatar.tsx` — Canva-inspired profile photo with fallback to initials
 - `src/components/layout/Header.tsx` — Standard top bar with back navigation and right slot
 
 ### Phase 4 — Home Dashboard, Grievance List & Details ✅
+
 - `src/hooks/useIssues.ts` — TanStack Query hooks (`useMyIssues`, `useIssueDetail`, `useSubmitIssue`) with resilient demo fallback data for phone testing
 - `src/components/issue/IssueCard.tsx` — Grievance summary card with category, status, title, location, and relative time
 - `src/components/issue/EmptyState.tsx` — Clean placeholder state with call-to-action button
@@ -86,6 +93,7 @@
 - TypeScript check: **0 errors**
 
 ### Phase 5 — Grievance Resolution Timeline ✅
+
 - `src/components/issue/TimelineStep.tsx` — Step item with color-coded status icons, connecting vertical tracking lines, actor badges (Admin/User/System), and timestamps
 - `src/components/issue/Timeline.tsx` — Chronological sorting timeline container, empty state for new grievances, and resolution milestone footer
 - `app/(app)/issues/[id].tsx` — Integrated the modular `<Timeline />` component and cleaned up inline styles
@@ -93,6 +101,7 @@
 - TypeScript check: **0 errors**
 
 ### Phase 6 — Standard Grievance Reporting Form ✅
+
 - `src/services/location.service.ts` — `expo-location` GPS coordinate acquisition, reverse geocoding, and pre-defined NEHU landmarks (`CAMPUS_LANDMARKS`)
 - `src/components/issue/CategoryPicker.tsx` — Canva-inspired 2-column visual grid covering all 8 NEHU categories with active states and dynamic subcategory chip shelf
 - `app/(app)/report/index.tsx` — Report Hub screen presenting Standard Form vs AI Chatbot channels, SLA turnaround guidance, and anti-ragging helpline notice
@@ -101,14 +110,27 @@
 - `docs/REPORT_AND_TIMELINE_IMPLEMENTATION.md` — Comprehensive architectural guide for backend and AI teammates
 - TypeScript check: **0 errors**
 
-## Next: Phase 7 — AI Chatbot Reporter
-- Chatbot session state machine & types (`src/types/api.types.ts`)
-- Chatbot API client (`src/api/chatbot.api.ts` connecting to FastAPI microservice)
-- Chat UI components: `ChatBubble.tsx`, `ChatInput.tsx`, `TypingIndicator.tsx`
-- Full conversational reporter screen: `app/(app)/report/chatbot.tsx`
-- Structured draft review card with 1-tap approval & submission into `POST /issues`
+### Phase 7 — AI Chatbot Reporter ✅
+
+- `src/types/api.types.ts` — Added `ChatMessage`, `MessageRole`, `DraftIssue`, and enhanced `ChatSessionState`
+- `src/components/chatbot/ChatBubble.tsx` — Distinct user, assistant (with sparkle badge), and system speech bubbles
+- `src/components/chatbot/TypingIndicator.tsx` — 3 animated bouncing dots for AI reasoning latency feedback
+- `src/components/chatbot/ChatInput.tsx` — Multiline text field with quick prompt suggestion chips and character counter
+- `src/components/chatbot/DraftReviewCard.tsx` — Canva-inspired grievance summary card with title, category, location, description, and 1-tap submission
+- `src/hooks/useChatbot.ts` — React state machine with session management and intelligent local simulator for offline phone testing
+- `app/(app)/report/chatbot.tsx` — Full conversational reporter screen with verified student banner, auto-scroll, keyboard avoidance, and draft submission directly to `POST /issues`
+- `docs/CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md` — Complete integration guide for Soumojit (FastAPI) and Harsh (Go Backend)
+- TypeScript check: **0 errors**
+
+## Next: Phase 8 — Notifications
+
+- FCM service setup (Push notifications)
+- Notification history screen (`app/(app)/notifications.tsx`)
+- In-app foreground toast
+- Deep link navigation handler
 
 ## Known Issues / Notes
+
 - Node v22.12.0 is one patch behind required ^22.13.0 — just warnings, works fine
 - All EBADENGINE warnings can be ignored — they are non-blocking
 - ESLint installed with --legacy-peer-deps due to React 19 peer dep conflict

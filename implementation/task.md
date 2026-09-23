@@ -69,12 +69,12 @@
 - [x] Category picker component
 - [x] Full report form (word count, category, location, attachment placeholder)
 
-## Phase 7 — AI Chatbot Reporter
+## Phase 7 — AI Chatbot Reporter ✅
 
-- [ ] Chatbot types + session state machine
-- [ ] src/api/chatbot.api.ts
-- [ ] ChatBubble, ChatInput, TypingIndicator components
-- [ ] Full chatbot screen + draft review card
+- [x] Chatbot types + session state machine
+- [x] src/api/chatbot.api.ts
+- [x] ChatBubble, ChatInput, TypingIndicator components
+- [x] Full chatbot screen + draft review card
 
 ## Phase 8 — Notifications
 

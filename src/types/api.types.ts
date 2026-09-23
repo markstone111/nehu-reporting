@@ -190,6 +190,17 @@ export interface GetIssuesRequest {
 // Chatbot Types
 // ---------------------------------------------------------------------------
 
+export type MessageRole = 'user' | 'assistant' | 'system';
+
+export interface ChatMessage {
+  readonly id: string;
+  readonly role: MessageRole;
+  readonly content: string;
+  readonly timestamp: string;
+}
+
+export type DraftIssue = Omit<SubmitIssueRequest, 'attachments' | 'source' | 'metadata'>;
+
 /** State of the chatbot session — tracks what the LLM has collected so far */
 export interface ChatSessionState {
   readonly category: string | null;
@@ -197,7 +208,7 @@ export interface ChatSessionState {
   readonly collectedFields: readonly string[];
   readonly pendingFields: readonly string[];
   readonly complete: boolean;
-  readonly draftIssue: Omit<SubmitIssueRequest, 'attachments' | 'source' | 'metadata'> | null;
+  readonly draftIssue: DraftIssue | null;
 }
 
 export interface ChatMessageRequest {

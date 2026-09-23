@@ -34,11 +34,14 @@ This document explains **what has been built** in the mobile app across **Phase 
 ## 2. Phase 5: Grievance Resolution Timeline
 
 ### 2.1 Component Architecture
+
 - **Location**: `src/components/issue/TimelineStep.tsx` & `src/components/issue/Timeline.tsx`
 - **Integrated In**: `app/(app)/issues/[id].tsx`
 
 ### 2.2 Visual Node Design
+
 Each timeline event represents an administrative action or status transition:
+
 - **Status Icons & Color Scheme**:
   - `SUBMITTED`: Blue paper plane (`#003DA5`)
   - `UNDER_REVIEW`: Sky blue magnifying glass (`#0284C7`)
@@ -56,6 +59,7 @@ Each timeline event represents an administrative action or status transition:
   - Displays relative time (`3 hours ago`, `Yesterday`) plus exact formatted date/time (`21 Sep 2026, 04:30 PM`).
 
 ### 2.3 Expected Backend Timeline Event Payload
+
 When `GET /issues/:id` is called by the app, Harsh's Go backend should return the `timeline` array:
 
 ```json
@@ -110,7 +114,9 @@ When `GET /issues/:id` is called by the app, Harsh's Go backend should return th
 ## 3. Phase 6: Standard Grievance Reporting Form
 
 ### 3.1 Report Hub (`app/(app)/report/index.tsx`)
+
 Accessible via the central `+` action button in the bottom navigation bar:
+
 - Presents the student with two reporting channels:
   1. **Standard Form**: Structured manual reporting with category selector and GPS.
   2. **AI Assistant**: Natural conversational audio/chat reporting with automatic categorization.
@@ -119,20 +125,22 @@ Accessible via the central `+` action button in the bottom navigation bar:
 ---
 
 ### 3.2 Category & Subcategory Picker (`src/components/issue/CategoryPicker.tsx`)
+
 A visual 2-column grid covering all 8 official NEHU categories:
 
-| Category ID | Display Label | Description | Subcategories |
-|---|---|---|---|
-| `INFRASTRUCTURE` | Infrastructure | Buildings, roads, electricity, water | Electricity, Water, Building, Road, Furniture |
-| `HOSTEL` | Hostel | Rooms, facilities, mess, warden | Room Condition, Mess Food, Warden/Staff, Water, Electricity |
-| `ACADEMICS` | Academics | Classes, faculty, exams, timetable | Classes, Faculty, Exam/Results, Timetable, Library |
-| `HYGIENE` | Hygiene & Sanitation | Cleanliness, washrooms, waste | Washrooms, Waste Disposal, Campus Cleanliness |
-| `SAFETY` | Safety & Ragging | Ragging, harassment, security | Ragging, Harassment, Security Concern, Accident |
-| `IT_SERVICES` | IT & Network | WiFi, lab PCs, student portal | WiFi/Internet, Computer Lab, Student Portal, Printer |
-| `ADMINISTRATION`| Administration | Fees, certificates, ID cards | Fee/Scholarship, Certificates, ID Card, Admin Staff |
-| `OTHER` | Other | General campus issues | General Issue |
+| Category ID      | Display Label        | Description                          | Subcategories                                               |
+| ---------------- | -------------------- | ------------------------------------ | ----------------------------------------------------------- |
+| `INFRASTRUCTURE` | Infrastructure       | Buildings, roads, electricity, water | Electricity, Water, Building, Road, Furniture               |
+| `HOSTEL`         | Hostel               | Rooms, facilities, mess, warden      | Room Condition, Mess Food, Warden/Staff, Water, Electricity |
+| `ACADEMICS`      | Academics            | Classes, faculty, exams, timetable   | Classes, Faculty, Exam/Results, Timetable, Library          |
+| `HYGIENE`        | Hygiene & Sanitation | Cleanliness, washrooms, waste        | Washrooms, Waste Disposal, Campus Cleanliness               |
+| `SAFETY`         | Safety & Ragging     | Ragging, harassment, security        | Ragging, Harassment, Security Concern, Accident             |
+| `IT_SERVICES`    | IT & Network         | WiFi, lab PCs, student portal        | WiFi/Internet, Computer Lab, Student Portal, Printer        |
+| `ADMINISTRATION` | Administration       | Fees, certificates, ID cards         | Fee/Scholarship, Certificates, ID Card, Admin Staff         |
+| `OTHER`          | Other                | General campus issues                | General Issue                                               |
 
 When a category is selected:
+
 - The card highlights with a 2px colored border.
 - A horizontal chip carousel expands below showing specific subcategories.
 - The user can select a subcategory or proceed with general category triage.
@@ -140,6 +148,7 @@ When a category is selected:
 ---
 
 ### 3.3 Campus Location & GPS Auto-Detection (`src/services/location.service.ts`)
+
 - **GPS Auto-Detection**:
   - Calls `expo-location` to get coordinates (`latitude`, `longitude`).
   - Calls `Location.reverseGeocodeAsync` to resolve street/subdistrict name.
@@ -160,7 +169,9 @@ When a category is selected:
 ---
 
 ### 3.4 Client-Side Form Validation Rules
+
 Matches server constraints defined in `src/constants/limits.ts`:
+
 1. **Title**:
    - Minimum: 5 characters
    - Maximum: 100 characters
@@ -180,6 +191,7 @@ Matches server constraints defined in `src/constants/limits.ts`:
 ---
 
 ### 3.5 Exact Submission Payload Sent to Backend
+
 When the student taps **Submit Grievance**, the app sends an authenticated `POST /issues` HTTP request:
 
 ```json
@@ -209,6 +221,7 @@ When the student taps **Submit Grievance**, the app sends an authenticated `POST
 ---
 
 ### 3.6 Backend Response Handling
+
 Harsh's Go backend returns a `SubmitIssueResponse`:
 
 ```json
@@ -222,17 +235,19 @@ Harsh's Go backend returns a `SubmitIssueResponse`:
 ```
 
 - **Standard Case (`isDuplicate: false`)**:
-  - Displays alert: *"Grievance Filed Successfully (#A1B2C3D4)"*.
+  - Displays alert: _"Grievance Filed Successfully (#A1B2C3D4)"_.
   - Immediately navigates to `/(app)/issues/:id`.
 - **Duplicate Linked Case (`isDuplicate: true`)**:
   - Go backend detects that cosine similarity against an existing active report is $\ge 0.85$.
-  - App shows alert: *"Linked to Existing Campus Report: A similar grievance was already reported in this zone. Your report has been grouped for priority redressal."*
+  - App shows alert: _"Linked to Existing Campus Report: A similar grievance was already reported in this zone. Your report has been grouped for priority redressal."_
   - Automatically redirects to the linked issue tracking screen.
 
 ---
 
 ### 3.7 Offline Testing Support
+
 If the Go backend is not running while Nikunj tests the mobile app:
+
 - `src/hooks/useIssues.ts` detects the connection failure.
 - Synthesizes a valid demo response with a real reference code (`#DEMO-XXXX`).
 - Prepends the new issue to the local list so it immediately appears under "Recent Grievances" and "My Issues".
