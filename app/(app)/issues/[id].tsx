@@ -5,7 +5,15 @@
  * duplicate linkage alert, and resolution timeline events.
  */
 
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
+  RefreshControl,
+  Pressable,
+} from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenWrapper } from '@/components/layout/ScreenWrapper';
@@ -23,7 +31,7 @@ import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '@/constants/theme';
 export default function IssueDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const { data: issue, isLoading, error, refetch } = useIssueDetail(id ?? '');
+  const { data: issue, isLoading, isRefetching, error, refetch } = useIssueDetail(id ?? '');
 
   if (isLoading) {
     return (
@@ -59,9 +67,35 @@ export default function IssueDetailScreen() {
 
   return (
     <ScreenWrapper scrollable={false} backgroundColor={COLORS.gray50}>
-      <Header title="Grievance Details" subtitle={refCode} showBack />
+      <Header
+        title="Grievance Details"
+        subtitle={refCode}
+        showBack
+        rightElement={
+          <Pressable
+            onPress={() => refetch()}
+            hitSlop={8}
+            style={styles.headerRefreshBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh grievance status"
+          >
+            <Ionicons name="refresh" size={20} color={COLORS.gray700} />
+          </Pressable>
+        }
+      />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            colors={[COLORS.primary]}
+            tintColor={COLORS.primary}
+          />
+        }
+      >
         {/* Duplicate Linkage Alert (if applicable) */}
         {issue.isDuplicate && (
           <View style={styles.duplicateBanner}>
@@ -344,5 +378,8 @@ const styles = StyleSheet.create({
     color: COLORS.gray500,
     textAlign: 'center',
     marginLeft: SPACING.xs,
+  },
+  headerRefreshBtn: {
+    padding: SPACING.xxs,
   },
 });
