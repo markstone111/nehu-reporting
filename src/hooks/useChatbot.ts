@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { chatbotApi } from '@/api/chatbot.api';
+import { geminiService } from '@/services/gemini.service';
 import { logger } from '@/utils/logger.utils';
 import type { ChatMessage, ChatSessionState, DraftIssue } from '@/types/api.types';
 import { ISSUE_CATEGORIES, type CategoryId } from '@/constants/categories';
@@ -91,27 +92,64 @@ export function useChatbot() {
 
         setMessages((prev) => [...prev, botMsg]);
       } catch (err: unknown) {
-        // Fallback: Intelligent local state machine for offline phone testing
-        await new Promise((res) => setTimeout(res, 750)); // realistic typing delay
+        // Fallback 1: Direct Google Gemini AI (if key is configured in .env)
+        let processedByGemini = false;
+        if (geminiService.hasApiKey()) {
+          try {
+            const geminiResult = await geminiService.generateGrievanceTriage(updatedMessages);
+            if (geminiResult) {
+              setSessionId((prev) => prev ?? `gemini-session-${Date.now()}`);
+              setSessionState({
+                category: geminiResult.category,
+                subcategory: geminiResult.subcategory ?? null,
+                collectedFields: ['category', 'location', 'description'],
+                pendingFields: geminiResult.complete ? [] : ['location'],
+                complete: geminiResult.complete,
+                draftIssue: geminiResult.draft,
+              });
 
-        const simulated = simulateBotResponse(userText, sessionStateRef.current, updatedMessages);
+              const botMsg: ChatMessage = {
+                id: `bot-${Date.now()}`,
+                role: 'assistant',
+                content: geminiResult.replyText,
+                timestamp: new Date().toISOString(),
+              };
 
-        logger.log('CHATBOT', `Simulator Bot: "${simulated.replyText}"`, {
-          complete: simulated.nextState.complete,
-          category: simulated.nextState.category,
-        });
+              setMessages((prev) => [...prev, botMsg]);
+              processedByGemini = true;
+            }
+          } catch (geminiErr: unknown) {
+            logger.warn(
+              'CHATBOT',
+              'Direct Gemini call failed; falling back to simulator',
+              geminiErr,
+            );
+          }
+        }
 
-        setSessionId((prev) => prev ?? `demo-session-${Date.now()}`);
-        setSessionState(simulated.nextState);
+        // Fallback 2: Intelligent local state machine for offline phone testing
+        if (!processedByGemini) {
+          await new Promise((res) => setTimeout(res, 600)); // realistic typing delay
 
-        const botMsg: ChatMessage = {
-          id: `bot-${Date.now()}`,
-          role: 'assistant',
-          content: simulated.replyText,
-          timestamp: new Date().toISOString(),
-        };
+          const simulated = simulateBotResponse(userText, sessionStateRef.current, updatedMessages);
 
-        setMessages((prev) => [...prev, botMsg]);
+          logger.log('CHATBOT', `Simulator Bot: "${simulated.replyText}"`, {
+            complete: simulated.nextState.complete,
+            category: simulated.nextState.category,
+          });
+
+          setSessionId((prev) => prev ?? `demo-session-${Date.now()}`);
+          setSessionState(simulated.nextState);
+
+          const botMsg: ChatMessage = {
+            id: `bot-${Date.now()}`,
+            role: 'assistant',
+            content: simulated.replyText,
+            timestamp: new Date().toISOString(),
+          };
+
+          setMessages((prev) => [...prev, botMsg]);
+        }
       } finally {
         setIsTyping(false);
       }

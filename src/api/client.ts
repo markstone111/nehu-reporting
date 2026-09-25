@@ -66,9 +66,10 @@ const createApiClient = (): AxiosInstance => {
   // -------------------------------------------------------------------------
   instance.interceptors.request.use(
     async (config: InternalAxiosRequestConfig & AppRequestConfig) => {
-      // Read base URL dynamically from the settings store (Zustand)
+      // Read base URL from .env (EXPO_PUBLIC_API_URL) if defined, or fall back to Zustand settings store
+      const envApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '');
       const { baseApiUrl } = useSettingsStore.getState();
-      config.baseURL = baseApiUrl;
+      config.baseURL = envApiUrl || baseApiUrl;
 
       // Attach access token unless this is a public route (login/register)
       if (!config._isPublic) {

@@ -21,8 +21,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Default values
 // ---------------------------------------------------------------------------
 
-/** Production backend URL — update this when your Go server is deployed */
-const DEFAULT_API_URL = 'https://api.nehu.ac.in/issues/v1';
+/** Production backend URL — read from .env if defined, or fallback */
+const DEFAULT_API_URL =
+  process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '') || 'https://api.nehu.ac.in/issues/v1';
 
 /** Development fallback — useful during local testing */
 const DEV_API_URL = 'http://10.0.2.2:8080/v1'; // Android emulator localhost
