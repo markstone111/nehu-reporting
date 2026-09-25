@@ -10,6 +10,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { issuesApi } from '@/api/issues.api';
+import { logger } from '@/utils/logger.utils';
 import type {
   Issue,
   IssueSummary,
@@ -159,6 +160,7 @@ export function useMyIssues(params: GetIssuesRequest = {}) {
     queryFn: async () => {
       try {
         const response = await issuesApi.getMyIssues(params);
+        logger.log('USER_ACTION', `Fetched grievances list (total: ${response.data.length})`);
         return response;
       } catch (err) {
         // Fallback to demo issues if server is unreachable
@@ -166,6 +168,10 @@ export function useMyIssues(params: GetIssuesRequest = {}) {
         if (params.status) {
           filtered = filtered.filter((i) => i.status === params.status);
         }
+        logger.log(
+          'USER_ACTION',
+          `[DEMO FALLBACK] Loaded grievances list (total: ${filtered.length})`,
+        );
         return {
           data: filtered,
           total: filtered.length,
@@ -186,8 +192,11 @@ export function useIssueDetail(id: string) {
   return useQuery<Issue>({
     queryKey: ['issue', id],
     queryFn: async () => {
+      logger.log('USER_ACTION', `Loading grievance details: ${id}`);
       try {
-        return await issuesApi.getIssueById(id);
+        const detail = await issuesApi.getIssueById(id);
+        logger.log('USER_ACTION', `Loaded grievance details from API: ${id}`);
+        return detail;
       } catch (err) {
         // Return demo detail or synthesize a realistic detail from summary
         if (DEMO_DETAIL_MAP[id]) {
@@ -248,11 +257,27 @@ export function useSubmitIssue() {
   return useMutation<SubmitIssueResponse, Error, SubmitIssueRequest>({
     mutationFn: async (data: SubmitIssueRequest): Promise<SubmitIssueResponse> => {
       try {
-        return await issuesApi.submit(data);
+        const res = await issuesApi.submit(data);
+        logger.log(
+          'ISSUE_SUBMIT',
+          `Grievance submitted to API: "${data.title}" -> ${data.category}`,
+          {
+            issueId: res.issueId,
+            location: data.location.label,
+          },
+        );
+        return res;
       } catch (err) {
         // Fallback for demo / offline phone testing
         const now = new Date().toISOString();
         const newId = `demo-${Date.now()}`;
+
+        logger.warn('ISSUE_SUBMIT', `Backend offline — created local mock grievance: ${newId}`, {
+          title: data.title,
+          category: data.category,
+          location: data.location.label,
+          source: data.source,
+        });
         const newSummary: IssueSummary = {
           id: newId,
           title: data.title,

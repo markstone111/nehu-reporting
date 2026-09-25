@@ -12,6 +12,7 @@ import { authApi } from '@/api/auth.api';
 import { SecureStorage, STORAGE_KEYS } from '@/services/storage.service';
 import { useAuthStore, selectIsAuthenticated } from '@/store/auth.store';
 import { getErrorMessage } from '@/utils/error.utils';
+import { logger } from '@/utils/logger.utils';
 import type { LoginRequest, RegisterRequest, AuthResponse, User } from '@/types/api.types';
 
 export function useAuth() {
@@ -28,6 +29,11 @@ export function useAuth() {
    * Persist authentication tokens securely and update Zustand state.
    */
   const handleAuthSuccess = async (response: AuthResponse) => {
+    logger.log(
+      'AUTH',
+      `User authenticated: ${response.user.name} (${response.user.email}) — role: ${response.user.role}`,
+    );
+
     // 1. Encrypted storage for JWT tokens
     await SecureStorage.set(STORAGE_KEYS.ACCESS_TOKEN, response.tokens.accessToken);
     await SecureStorage.set(STORAGE_KEYS.REFRESH_TOKEN, response.tokens.refreshToken);
@@ -79,6 +85,8 @@ export function useAuth() {
 
       // 3. Clear TanStack query cache
       queryClient.clear();
+
+      logger.log('AUTH', 'User signed out — tokens and cache cleared');
 
       // 4. Redirect to login
       router.replace('/(auth)/login');

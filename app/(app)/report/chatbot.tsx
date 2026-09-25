@@ -43,9 +43,26 @@ export default function ChatbotReportScreen() {
   const user = useAuthStore((s) => s.user);
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
-  const { messages, sessionState, isTyping, sendMessage, resetSession } = useChatbot();
+  const { messages, sessionState, isTyping, sendMessage, requestMoreDetails, resetSession } =
+    useChatbot();
 
   const submitIssueMutation = useSubmitIssue();
+
+  // Guard against accidental reset
+  const handleConfirmReset = () => {
+    if (messages.length <= 1 && !sessionState.draftIssue) {
+      resetSession();
+      return;
+    }
+    Alert.alert(
+      'Reset Conversation?',
+      'Are you sure you want to start over? All messages and your grievance draft will be cleared.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Start Over', style: 'destructive', onPress: resetSession },
+      ],
+    );
+  };
 
   // Scroll to bottom when new messages arrive or when typing starts
   useEffect(() => {
@@ -131,7 +148,7 @@ export default function ChatbotReportScreen() {
         showBack
         rightElement={
           <Pressable
-            onPress={resetSession}
+            onPress={handleConfirmReset}
             hitSlop={8}
             style={styles.headerResetButton}
             accessibilityRole="button"
@@ -172,10 +189,8 @@ export default function ChatbotReportScreen() {
                 <DraftReviewCard
                   draft={sessionState.draftIssue}
                   onSubmit={handleSubmitDraft}
-                  onKeepChatting={() => {
-                    sendMessage('I would like to clarify more details about this issue.');
-                  }}
-                  onReset={resetSession}
+                  onKeepChatting={requestMoreDetails}
+                  onReset={handleConfirmReset}
                   isSubmitting={submitIssueMutation.isPending}
                 />
               )}
@@ -187,10 +202,10 @@ export default function ChatbotReportScreen() {
         <ChatInput
           onSend={sendMessage}
           isTyping={isTyping}
-          disabled={sessionState.complete}
+          disabled={isTyping}
           placeholder={
             sessionState.complete
-              ? 'Draft ready! Tap Confirm & Submit above.'
+              ? 'Add more details or clarify anything...'
               : 'Describe the problem in everyday words...'
           }
           quickPrompts={messages.length === 1 ? QUICK_PROMPTS : undefined}

@@ -13,7 +13,7 @@
  *   - Immediate navigation to grievance timeline tracking upon submission
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -93,6 +93,22 @@ export default function ReportFormScreen() {
     if (locationError) setLocationError(null);
   };
 
+  // Reset all form inputs to blank defaults
+  const resetForm = useCallback(() => {
+    setTitle('');
+    setSelectedCategoryId(null);
+    setSelectedSubcategoryId(null);
+    setLocationLabel('');
+    setGpsLocation(null);
+    setIsFetchingGps(false);
+    setGpsError(null);
+    setDescription('');
+    setTitleError(null);
+    setCategoryError(null);
+    setLocationError(null);
+    setDescriptionError(null);
+  }, []);
+
   // Quick landmark chip tap
   const handleSelectLandmark = (landmark: string) => {
     setLocationLabel(landmark);
@@ -147,6 +163,7 @@ export default function ReportFormScreen() {
 
     try {
       const response = await submitIssueMutation.mutateAsync(payload);
+      resetForm();
 
       if (response.isDuplicate) {
         Alert.alert(
@@ -192,10 +209,31 @@ export default function ReportFormScreen() {
 
   const displayName = user?.name ?? 'NEHU Student';
   const roleDisplay = user?.role ? ` • ${capitalize(user.role)}` : '';
+  const hasUnsavedContent =
+    title.trim().length > 0 || description.trim().length > 0 || selectedCategoryId !== null;
 
   return (
     <ScreenWrapper scrollable={false} backgroundColor={COLORS.gray50}>
-      <Header title="File Grievance" subtitle="Standard Structured Report" showBack />
+      <Header
+        title="File Grievance"
+        subtitle="Standard Structured Report"
+        showBack
+        rightElement={
+          hasUnsavedContent ? (
+            <Pressable
+              onPress={() => {
+                Alert.alert('Clear Form', 'Are you sure you want to reset all form fields?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Clear', style: 'destructive', onPress: resetForm },
+                ]);
+              }}
+              hitSlop={8}
+            >
+              <Text style={styles.clearHeaderButtonText}>Clear</Text>
+            </Pressable>
+          ) : undefined
+        }
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -625,5 +663,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: SPACING.sm,
     lineHeight: 14,
+  },
+  clearHeaderButtonText: {
+    fontFamily: TYPOGRAPHY.fontFamily.semiBold,
+    fontSize: 13,
+    color: COLORS.error,
+    paddingHorizontal: SPACING.xs,
   },
 });

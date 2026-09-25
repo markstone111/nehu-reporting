@@ -29,6 +29,7 @@ import { useSettingsStore } from '@/store/settings.store';
 import { useAuthStore } from '@/store/auth.store';
 import { SecureStorage, STORAGE_KEYS } from '@/services/storage.service';
 import { API_TIMEOUTS } from '@/constants/limits';
+import { logger } from '@/utils/logger.utils';
 import type { ApiError, AuthTokens, RefreshTokenRequest } from '@/types/api.types';
 
 // ---------------------------------------------------------------------------
@@ -77,17 +78,32 @@ const createApiClient = (): AxiosInstance => {
         }
       }
 
+      logger.log('HTTP_REQ', `${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+
       return config;
     },
-    (error: unknown) => Promise.reject(normalizeError(error)),
+    (error: unknown) => {
+      logger.error('HTTP_ERR', 'Request interceptor failed', error);
+      return Promise.reject(normalizeError(error));
+    },
   );
 
   // -------------------------------------------------------------------------
   // Response interceptor — handle 401, normalize errors
   // -------------------------------------------------------------------------
   instance.interceptors.response.use(
-    (response) => response,
+    (response) => {
+      logger.log(
+        'HTTP_RES',
+        `${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`,
+      );
+      return response;
+    },
     async (error: AxiosError) => {
+      logger.warn(
+        'HTTP_ERR',
+        `${error.response?.status ?? 'NETWORK_OFFLINE'} ${error.config?.method?.toUpperCase()} ${error.config?.url} — ${error.message}`,
+      );
       const originalConfig = error.config as AppRequestConfig | undefined;
 
       // Handle 401 Unauthorized — attempt token refresh once

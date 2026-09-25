@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { chatbotApi } from '@/api/chatbot.api';
+import { logger } from '@/utils/logger.utils';
 import type { ChatMessage, ChatSessionState, DraftIssue } from '@/types/api.types';
 import { ISSUE_CATEGORIES, type CategoryId } from '@/constants/categories';
 
@@ -17,7 +18,7 @@ const INITIAL_GREETING: ChatMessage = {
   id: 'msg-welcome',
   role: 'assistant',
   content:
-    "Hello! I'm your NEHU Grievance Assistant. You can describe any issue on campus in everyday words (English or informal chat) — I'll identify the department, extract the location, and prepare a formal report for university review. What's going on?",
+    "Hello! I'm your NEHU Grievance Assistant. You can describe any issue on campus in everyday words (English, campus abbreviations like SoT or BH2, or informal chat) — I'll identify the department, extract the location, and prepare a formal report for university review. What's going on?",
   timestamp: new Date().toISOString(),
 };
 
@@ -37,9 +38,12 @@ export function useChatbot() {
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Keep a reference to current session state for closures
+  // Keep a reference to current session state and messages for closures
   const sessionStateRef = useRef(sessionState);
   sessionStateRef.current = sessionState;
+
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
 
   /**
    * Send user message to the chatbot
@@ -49,6 +53,8 @@ export function useChatbot() {
       const userText = text.trim();
       if (!userText) return;
 
+      logger.log('CHATBOT', `User: "${userText}"`);
+
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
@@ -56,7 +62,8 @@ export function useChatbot() {
         timestamp: new Date().toISOString(),
       };
 
-      setMessages((prev) => [...prev, userMsg]);
+      const updatedMessages = [...messagesRef.current, userMsg];
+      setMessages(updatedMessages);
       setIsTyping(true);
       setError(null);
 
@@ -66,6 +73,10 @@ export function useChatbot() {
           sessionId,
           message: userText,
           sessionState: sessionStateRef.current,
+        });
+
+        logger.log('CHATBOT', `FastAPI Bot: "${response.botMessage}"`, {
+          complete: response.sessionState.complete,
         });
 
         setSessionId(response.sessionId);
@@ -81,9 +92,14 @@ export function useChatbot() {
         setMessages((prev) => [...prev, botMsg]);
       } catch (err: unknown) {
         // Fallback: Intelligent local state machine for offline phone testing
-        await new Promise((res) => setTimeout(res, 900)); // realistic typing delay
+        await new Promise((res) => setTimeout(res, 750)); // realistic typing delay
 
-        const simulated = simulateBotResponse(userText, sessionStateRef.current);
+        const simulated = simulateBotResponse(userText, sessionStateRef.current, updatedMessages);
+
+        logger.log('CHATBOT', `Simulator Bot: "${simulated.replyText}"`, {
+          complete: simulated.nextState.complete,
+          category: simulated.nextState.category,
+        });
 
         setSessionId((prev) => prev ?? `demo-session-${Date.now()}`);
         setSessionState(simulated.nextState);
@@ -104,9 +120,32 @@ export function useChatbot() {
   );
 
   /**
+   * User wants to add more details or edit the draft
+   */
+  const requestMoreDetails = useCallback(() => {
+    logger.log('CHATBOT', 'User clicked "Add More Details" — unlocking input bar');
+
+    setSessionState((prev) => ({
+      ...prev,
+      complete: false,
+    }));
+
+    const promptMsg: ChatMessage = {
+      id: `bot-${Date.now()}`,
+      role: 'assistant',
+      content:
+        'Sure! What additional details or corrections would you like to add? Just type them below.',
+      timestamp: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, promptMsg]);
+  }, []);
+
+  /**
    * Reset session and restart conversation
    */
   const resetSession = useCallback(() => {
+    logger.log('CHATBOT', 'Conversation reset');
     if (sessionId) {
       chatbotApi.abandonSession(sessionId);
     }
@@ -129,6 +168,7 @@ export function useChatbot() {
     isTyping,
     error,
     sendMessage,
+    requestMoreDetails,
     resetSession,
     sessionId,
   };
@@ -139,70 +179,103 @@ export function useChatbot() {
 // ---------------------------------------------------------------------------
 
 function simulateBotResponse(
-  userText: string,
+  currentUserText: string,
   currentState: ChatSessionState,
+  allMessages: readonly ChatMessage[],
 ): { replyText: string; nextState: ChatSessionState } {
-  const lower = userText.toLowerCase();
+  // Collect all user messages in history to maintain rich context
+  const userMessages = allMessages.filter((m) => m.role === 'user').map((m) => m.content);
 
+  const fullConversationText = userMessages.join(' ');
+  const lower = fullConversationText.toLowerCase();
+
+  // 1. Category & Subcategory Detection
   let detectedCategory: CategoryId = (currentState.category as CategoryId) ?? 'OTHER';
   let detectedSubcategory = currentState.subcategory;
 
-  // Category detection heuristic
   if (
+    lower.includes('dustbin') ||
+    lower.includes('overflow') ||
+    lower.includes('garbage') ||
+    lower.includes('waste') ||
+    lower.includes('trash') ||
+    lower.includes('litter') ||
+    lower.includes('smell') ||
+    lower.includes('stink') ||
+    lower.includes('washroom') ||
+    lower.includes('toilet') ||
+    lower.includes('clean') ||
+    lower.includes('sanitation') ||
+    lower.includes('dirty')
+  ) {
+    detectedCategory = 'HYGIENE';
+    if (lower.includes('washroom') || lower.includes('toilet')) {
+      detectedSubcategory = 'HYGIENE_WASHROOM';
+    } else if (
+      lower.includes('dustbin') ||
+      lower.includes('overflow') ||
+      lower.includes('garbage') ||
+      lower.includes('waste')
+    ) {
+      detectedSubcategory = 'HYGIENE_WASTE';
+    } else {
+      detectedSubcategory = 'HYGIENE_CAMPUS';
+    }
+  } else if (
     lower.includes('water') ||
     lower.includes('geyser') ||
     lower.includes('mess') ||
     lower.includes('food') ||
     lower.includes('warden') ||
-    lower.includes('hostel')
+    lower.includes('hostel') ||
+    lower.includes('room')
   ) {
     detectedCategory = 'HOSTEL';
     if (lower.includes('water') || lower.includes('geyser')) detectedSubcategory = 'HOSTEL_WATER';
     else if (lower.includes('mess') || lower.includes('food')) detectedSubcategory = 'HOSTEL_MESS';
+    else if (lower.includes('warden')) detectedSubcategory = 'HOSTEL_WARDEN';
+    else detectedSubcategory = 'HOSTEL_ROOM';
   } else if (
     lower.includes('wifi') ||
     lower.includes('wi-fi') ||
     lower.includes('internet') ||
     lower.includes('portal') ||
     lower.includes('computer') ||
-    lower.includes('lab')
+    lower.includes('lab') ||
+    lower.includes('printer')
   ) {
     detectedCategory = 'IT_SERVICES';
     if (lower.includes('wifi') || lower.includes('internet')) detectedSubcategory = 'IT_WIFI';
     else if (lower.includes('lab') || lower.includes('computer')) detectedSubcategory = 'IT_LAB';
+    else if (lower.includes('printer')) detectedSubcategory = 'IT_PRINTER';
+    else detectedSubcategory = 'IT_PORTAL';
   } else if (
     lower.includes('road') ||
     lower.includes('street') ||
     lower.includes('light') ||
     lower.includes('electricity') ||
     lower.includes('power cut') ||
-    lower.includes('structure')
+    lower.includes('lift') ||
+    lower.includes('pipe') ||
+    lower.includes('leak')
   ) {
     detectedCategory = 'INFRASTRUCTURE';
     if (lower.includes('electricity') || lower.includes('light'))
       detectedSubcategory = 'ELECTRICITY';
     else if (lower.includes('road')) detectedSubcategory = 'ROAD';
-  } else if (
-    lower.includes('washroom') ||
-    lower.includes('toilet') ||
-    lower.includes('garbage') ||
-    lower.includes('waste') ||
-    lower.includes('clean')
-  ) {
-    detectedCategory = 'HYGIENE';
-    if (lower.includes('washroom') || lower.includes('toilet'))
-      detectedSubcategory = 'HYGIENE_WASHROOM';
-    else if (lower.includes('waste') || lower.includes('garbage'))
-      detectedSubcategory = 'HYGIENE_WASTE';
+    else if (lower.includes('pipe') || lower.includes('leak')) detectedSubcategory = 'WATER';
+    else detectedSubcategory = 'BUILDING';
   } else if (
     lower.includes('ragging') ||
     lower.includes('harass') ||
     lower.includes('security') ||
-    lower.includes('guard')
+    lower.includes('guard') ||
+    lower.includes('threat')
   ) {
     detectedCategory = 'SAFETY';
     if (lower.includes('ragging')) detectedSubcategory = 'SAFETY_RAGGING';
     else if (lower.includes('harass')) detectedSubcategory = 'SAFETY_HARASSMENT';
+    else detectedSubcategory = 'SAFETY_SECURITY';
   } else if (
     lower.includes('class') ||
     lower.includes('faculty') ||
@@ -213,27 +286,116 @@ function simulateBotResponse(
     detectedCategory = 'ACADEMICS';
     if (lower.includes('faculty')) detectedSubcategory = 'ACADEMICS_FACULTY';
     else if (lower.includes('exam')) detectedSubcategory = 'ACADEMICS_EXAM';
+    else detectedSubcategory = 'ACADEMICS_CLASS';
   }
 
-  // Location detection heuristic
-  let locationLabel = currentState.draftIssue?.location.label ?? '';
-  if (!locationLabel) {
-    if (lower.includes('hostel 1')) locationLabel = 'Boys Hostel Block 1';
-    else if (lower.includes('hostel 2')) locationLabel = 'Boys Hostel Block 2';
-    else if (lower.includes('hostel 3')) locationLabel = 'Boys Hostel Block 3';
-    else if (lower.includes('hostel 4')) locationLabel = 'Boys Hostel Block 4';
-    else if (lower.includes('girls hostel')) locationLabel = 'Girls Hostel Cluster';
-    else if (lower.includes('library')) locationLabel = 'Central Library';
-    else if (lower.includes('tech') || lower.includes('it dept') || lower.includes('engineering'))
-      locationLabel = 'School of Technology (Engineering Block)';
-    else if (lower.includes('science')) locationLabel = 'Science Complex';
-    else if (lower.includes('admin')) locationLabel = 'Administrative Block';
+  // 2. Campus Location & Landmark Extraction (Including common NEHU acronyms)
+  let detectedBuilding = '';
+  if (
+    lower.includes('sot') ||
+    lower.includes('s.o.t') ||
+    lower.includes('school of technology') ||
+    lower.includes('school of tech') ||
+    lower.includes('tech building') ||
+    lower.includes('tech block') ||
+    lower.includes('it dept') ||
+    lower.includes('engineering')
+  ) {
+    detectedBuilding = 'School of Technology (Engineering Block)';
+  } else if (
+    lower.includes('library') ||
+    lower.includes('central library') ||
+    lower.includes('reading hall')
+  ) {
+    detectedBuilding = 'Central Library';
+  } else if (
+    lower.includes('science complex') ||
+    lower.includes('physics') ||
+    lower.includes('chemistry')
+  ) {
+    detectedBuilding = 'Science Complex';
+  } else if (
+    lower.includes('admin') ||
+    lower.includes('vc office') ||
+    lower.includes('registrar')
+  ) {
+    detectedBuilding = 'Administration Block';
+  } else if (
+    lower.includes('bh 1') ||
+    lower.includes('bh1') ||
+    lower.includes('hostel 1') ||
+    lower.includes('boys hostel 1')
+  ) {
+    detectedBuilding = 'Boys Hostel Block 1';
+  } else if (
+    lower.includes('bh 2') ||
+    lower.includes('bh2') ||
+    lower.includes('hostel 2') ||
+    lower.includes('boys hostel 2')
+  ) {
+    detectedBuilding = 'Boys Hostel Block 2';
+  } else if (
+    lower.includes('bh 3') ||
+    lower.includes('bh3') ||
+    lower.includes('hostel 3') ||
+    lower.includes('boys hostel 3')
+  ) {
+    detectedBuilding = 'Boys Hostel Block 3';
+  } else if (
+    lower.includes('bh 4') ||
+    lower.includes('bh4') ||
+    lower.includes('hostel 4') ||
+    lower.includes('boys hostel 4')
+  ) {
+    detectedBuilding = 'Boys Hostel Block 4';
+  } else if (
+    lower.includes('gh 1') ||
+    lower.includes('gh1') ||
+    lower.includes('gh 2') ||
+    lower.includes('gh2') ||
+    lower.includes('girls hostel')
+  ) {
+    detectedBuilding = 'Girls Hostel Cluster';
+  } else if (lower.includes('health') || lower.includes('clinic')) {
+    detectedBuilding = 'NEHU Health Centre';
+  } else if (lower.includes('sac')) {
+    detectedBuilding = 'Student Activity Centre (SAC)';
   }
 
-  // If this is the first turn and location is still missing, ask for location
-  if (!locationLabel && !currentState.complete) {
+  // Floor / Room extraction
+  let detectedFloorOrRoom = '';
+  if (lower.includes('ground floor') || lower.includes('gf')) detectedFloorOrRoom = 'Ground Floor';
+  else if (lower.includes('1st floor') || lower.includes('first floor'))
+    detectedFloorOrRoom = '1st Floor';
+  else if (lower.includes('2nd floor') || lower.includes('second floor'))
+    detectedFloorOrRoom = '2nd Floor';
+  else if (lower.includes('3rd floor') || lower.includes('third floor'))
+    detectedFloorOrRoom = '3rd Floor';
+  else if (lower.includes('4th floor') || lower.includes('fourth floor'))
+    detectedFloorOrRoom = '4th Floor';
+
+  const roomMatch = lower.match(/room\s*#?\s*([0-9a-zA-Z]+)/);
+  if (roomMatch) {
+    detectedFloorOrRoom = detectedFloorOrRoom
+      ? `${detectedFloorOrRoom}, Room ${roomMatch[1].toUpperCase()}`
+      : `Room ${roomMatch[1].toUpperCase()}`;
+  }
+
+  // Combine building + floor
+  let locationLabel = detectedBuilding;
+  if (locationLabel && detectedFloorOrRoom) {
+    locationLabel = `${detectedBuilding}, ${detectedFloorOrRoom}`;
+  } else if (!locationLabel && detectedFloorOrRoom) {
+    locationLabel = `${detectedFloorOrRoom}, NEHU Campus`;
+  }
+
+  const categoryMeta = ISSUE_CATEGORIES.find((c) => c.id === detectedCategory);
+  const categoryLabel = categoryMeta ? categoryMeta.label : detectedCategory;
+
+  // If location is still unknown and we have fewer than 2 turns, ask for location
+  if (!locationLabel && userMessages.length < 2 && !currentState.complete) {
     return {
-      replyText: `Got it, that falls under **${detectedCategory.replace('_', ' ')}**. Could you tell me where exactly on campus this is happening (e.g. which hostel, department, or floor)?`,
+      replyText: `Understood, that falls under **${categoryLabel}**. Which campus building, hostel, or department is this occurring in (e.g. SoT, Boys Hostel 2, Central Library)?`,
       nextState: {
         category: detectedCategory,
         subcategory: detectedSubcategory,
@@ -245,15 +407,28 @@ function simulateBotResponse(
     };
   }
 
-  // If location is provided or already known, synthesize the complete draft!
+  // 3. Draft Generation with Full Historical Context
   const finalLocation = locationLabel || 'NEHU Campus, Shillong';
-  const categoryMeta = ISSUE_CATEGORIES.find((c) => c.id === detectedCategory);
-  const categoryLabel = categoryMeta ? categoryMeta.label : detectedCategory;
 
-  const generatedTitle = `${categoryLabel} grievance reported at ${finalLocation}`;
-  const generatedDescription = currentState.draftIssue
-    ? `${currentState.draftIssue.description} Additional context: ${userText}`
-    : `Student reported campus grievance: "${userText}". Priority redressal requested at ${finalLocation}.`;
+  // Construct realistic, informative title
+  let generatedTitle = `${categoryLabel} issue at ${finalLocation}`;
+  if (lower.includes('dustbin') || lower.includes('overflow')) {
+    generatedTitle = `Overflowing dustbins reported at ${finalLocation}`;
+  } else if (lower.includes('geyser') || (lower.includes('water') && lower.includes('hostel'))) {
+    generatedTitle = `Water supply / geyser breakdown at ${finalLocation}`;
+  } else if (lower.includes('wifi') || lower.includes('internet')) {
+    generatedTitle = `Wi-Fi connectivity dropouts in ${finalLocation}`;
+  } else if (lower.includes('streetlight') || lower.includes('light')) {
+    generatedTitle = `Electrical lighting fault reported at ${finalLocation}`;
+  }
+
+  // Construct description preserving original student statements
+  const initialStatement = userMessages[0] ?? currentUserText;
+  const additionalStatements = userMessages.slice(1).join('. ');
+
+  const generatedDescription = additionalStatements
+    ? `${initialStatement}. Additional details: ${additionalStatements}. Priority redressal requested at ${finalLocation}.`
+    : `${initialStatement}. Priority redressal requested at ${finalLocation}.`;
 
   const draft: DraftIssue = {
     title: generatedTitle,
@@ -268,9 +443,13 @@ function simulateBotResponse(
     },
   };
 
+  const isUpdate = userMessages.length > 2 || currentState.draftIssue !== null;
+  const replyText = isUpdate
+    ? "I've updated your grievance draft with the new details below. Please review the updated summary and tap 'Confirm & Submit'."
+    : "I've synthesized your complaint into an official grievance draft below. Please review the categorized details and tap 'Confirm & Submit' to send it directly to university administration.";
+
   return {
-    replyText:
-      "I've synthesized your complaint into an official grievance draft below. Please review the categorized details and tap 'Confirm & Submit' to send it directly to university administration.",
+    replyText,
     nextState: {
       category: detectedCategory,
       subcategory: detectedSubcategory,
