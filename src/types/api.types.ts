@@ -199,7 +199,13 @@ export interface ChatMessage {
   readonly timestamp: string;
 }
 
-export type DraftIssue = Omit<SubmitIssueRequest, 'attachments' | 'source' | 'metadata'>;
+export interface DraftIssue extends Omit<
+  SubmitIssueRequest,
+  'attachments' | 'source' | 'metadata'
+> {
+  readonly department?: string | undefined;
+  readonly hostel?: string | undefined;
+}
 
 /** State of the chatbot session — tracks what the LLM has collected so far */
 export interface ChatSessionState {

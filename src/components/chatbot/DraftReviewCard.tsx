@@ -33,6 +33,9 @@ export function DraftReviewCard({
   const category = getCategoryById(draft.category);
   const categoryLabel = category ? category.label : draft.category.replace('_', ' ');
 
+  // Determine issue display label
+  const issueTypeLabel = draft.department ? 'Department' : draft.hostel ? 'Hostel' : categoryLabel;
+
   return (
     <Card variant="elevated" padding="md" style={styles.card}>
       {/* Header Banner */}
@@ -41,9 +44,9 @@ export function DraftReviewCard({
           <Ionicons name="sparkles" size={16} color={COLORS.accent} />
         </View>
         <View style={styles.headerTextWrapper}>
-          <Text style={styles.headerTitle}>Grievance Draft Ready</Text>
+          <Text style={styles.headerTitle}>Generated Problem Summary</Text>
           <Text style={styles.headerSubtitle}>
-            Please review the structured summary before filing
+            Please review the categorized details before filing
           </Text>
         </View>
         <Badge label="Ready" variant="secondary" size="sm" />
@@ -51,41 +54,50 @@ export function DraftReviewCard({
 
       <View style={styles.divider} />
 
-      {/* Category & Subcategory Row */}
-      <View style={styles.categoryRow}>
-        <Badge label={categoryLabel} variant="primary" size="sm" />
-        {draft.subcategory && (
-          <Badge
-            label={draft.subcategory.replace('_', ' ')}
-            variant="neutral"
-            size="sm"
-            style={styles.subcatBadge}
-          />
+      {/* Structured Summary Grid */}
+      <View style={styles.summaryGrid}>
+        {/* Issue Type */}
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Issue :</Text>
+          <Badge label={issueTypeLabel} variant="primary" size="sm" />
+        </View>
+
+        {/* Department (if applicable) */}
+        {draft.department && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Department :</Text>
+            <Text style={styles.summaryValueHighlight}>{draft.department}</Text>
+          </View>
         )}
-      </View>
 
-      {/* Title */}
-      <Text style={styles.draftTitle}>{draft.title}</Text>
+        {/* Hostel (if applicable) */}
+        {draft.hostel && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Hostel :</Text>
+            <Text style={styles.summaryValueHighlight}>{draft.hostel}</Text>
+          </View>
+        )}
 
-      {/* Description */}
-      <View style={styles.descriptionBox}>
-        <Text style={styles.descriptionLabel}>Grievance Description:</Text>
-        <Text style={styles.descriptionText}>{draft.description}</Text>
-      </View>
+        {/* Problem Description */}
+        <View style={styles.descriptionBox}>
+          <Text style={styles.descriptionLabel}>Problem Description :</Text>
+          <Text style={styles.descriptionText}>{draft.description}</Text>
+        </View>
 
-      {/* Campus Location */}
-      <View style={styles.locationContainer}>
-        <Ionicons name="location" size={16} color={COLORS.primary} />
-        <View style={styles.locationTextWrapper}>
-          <Text style={styles.locationLabelText}>Campus Location</Text>
-          <Text style={styles.locationValueText}>{draft.location.label}</Text>
+        {/* Campus Location */}
+        <View style={styles.locationContainer}>
+          <Ionicons name="location" size={16} color={COLORS.primary} style={styles.locIcon} />
+          <View style={styles.locationTextWrapper}>
+            <Text style={styles.locationLabelText}>Location :</Text>
+            <Text style={styles.locationValueText}>{draft.location.label}</Text>
+          </View>
         </View>
       </View>
 
       {/* Action Buttons */}
       <View style={styles.actionsContainer}>
         <Button
-          title="Confirm & Submit Grievance"
+          title="Submit Issue"
           onPress={onSubmit}
           loading={isSubmitting}
           variant="primary"
@@ -161,20 +173,29 @@ const styles = StyleSheet.create({
     backgroundColor: '#FED7AA',
     marginVertical: SPACING.sm + 2,
   },
-  categoryRow: {
+  summaryGrid: {
+    gap: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.xs + 2,
+    marginBottom: SPACING.xxs,
+    gap: SPACING.xs,
   },
-  subcatBadge: {
-    marginLeft: SPACING.xs,
+  summaryLabel: {
+    fontFamily: TYPOGRAPHY.fontFamily.semiBold,
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.gray700,
+    minWidth: 90,
   },
-  draftTitle: {
+  summaryValueHighlight: {
     fontFamily: TYPOGRAPHY.fontFamily.bold,
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.gray900,
-    marginBottom: SPACING.sm,
-    lineHeight: TYPOGRAPHY.fontSize.base * 1.3,
+    fontSize: TYPOGRAPHY.fontSize.xs + 1,
+    color: COLORS.primary,
+  },
+  locIcon: {
+    marginTop: 2,
   },
   descriptionBox: {
     backgroundColor: COLORS.white,

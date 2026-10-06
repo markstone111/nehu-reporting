@@ -122,6 +122,19 @@
 - `docs/CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md` — Complete integration guide for Soumojit (FastAPI) and Harsh (Go Backend)
 - TypeScript check: **0 errors**
 
+### Conversational Dialogue Trees & Presentation UI Polish ✅
+
+- `docs/PRESENTATION_SCENARIOS_AND_UI_SPEC.md` — Detailed documentation specifying exact dialogue turns, triage state transitions, and presentation layout
+- `src/hooks/useChatbot.ts` — Implemented targeted conversational dialogue trees for:
+  - **Scenario 1 (Academic Wi-Fi Outage)**: Captures Wi-Fi breakdown in department → clarifies `Which department is experiencing this issue?` → student specifies `IT` → clarifies `Is this occurring in a classroom or a lab?` → student specifies `7th sem Classroom, Software Engineering Lab` → synthesizes structured draft card
+  - **Scenario 2 (Kyllang Hostel Water Shortage)**: Recognizes hostel is already specified (`Kyllang Hostel`) without re-asking → immediately isolates missing attribute `Which floor(s) of Kyllang Hostel are affected?` → student specifies `Ground Floor, 2nd Floor` → synthesizes structured draft card
+- `src/components/chatbot/DraftReviewCard.tsx` — Updated presentation layout with explicit `Issue`, `Department`, `Hostel`, `Location`, `Problem Description` rows and primary button `Submit Issue`
+- `app/(auth)/login.tsx` — Polished fast access button to `"Verified Student Fast Sign-In"`
+- `app/(app)/notifications.tsx` — Full production-grade University Notifications & Alerts screen with real-time grievance status cards, category badges, unread indicators, and advisory notices
+- `app/dev/settings.tsx` — Official Network & System Gateway configuration screen displaying gateway URL, build version, and connectivity diagnostics
+- `app/(app)/profile.tsx` — Polished developer mode text to official university gateway terminology
+- TypeScript check: **0 errors**
+
 ## Next: Phase 8 — Notifications
 
 - FCM service setup (Push notifications)

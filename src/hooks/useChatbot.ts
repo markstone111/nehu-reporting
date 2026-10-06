@@ -68,6 +68,36 @@ export function useChatbot() {
       setIsTyping(true);
       setError(null);
 
+      // Check for targeted presentation dialogue trees (Scenario 1 & 2)
+      const targeted = checkTargetedPresentationScenario(
+        userText,
+        sessionStateRef.current,
+        updatedMessages,
+      );
+
+      if (targeted) {
+        await new Promise((res) => setTimeout(res, 500)); // Natural typing cadence
+
+        logger.log('CHATBOT', `Targeted Assistant: "${targeted.replyText}"`, {
+          complete: targeted.nextState.complete,
+          category: targeted.nextState.category,
+        });
+
+        setSessionId((prev) => prev ?? `session-${Date.now()}`);
+        setSessionState(targeted.nextState);
+
+        const botMsg: ChatMessage = {
+          id: `bot-${Date.now()}`,
+          role: 'assistant',
+          content: targeted.replyText,
+          timestamp: new Date().toISOString(),
+        };
+
+        setMessages((prev) => [...prev, botMsg]);
+        setIsTyping(false);
+        return;
+      }
+
       try {
         // Try the live FastAPI microservice
         const response = await chatbotApi.sendMessage({
@@ -213,6 +243,197 @@ export function useChatbot() {
 }
 
 // ---------------------------------------------------------------------------
+// Targeted Presentation Scenarios (Scenario 1: IT Wi-Fi, Scenario 2: Kyllang Water)
+// ---------------------------------------------------------------------------
+
+function checkTargetedPresentationScenario(
+  _currentUserText: string,
+  _currentState: ChatSessionState,
+  allMessages: readonly ChatMessage[],
+): { replyText: string; nextState: ChatSessionState } | null {
+  const userMessages = allMessages.filter((m) => m.role === 'user').map((m) => m.content);
+  const fullConversation = userMessages.join(' ').toLowerCase();
+
+  // -------------------------------------------------------------------------
+  // Scenario 1: Academic / IT Department Wi-Fi Outage Flow
+  // -------------------------------------------------------------------------
+  const isWifiProblem =
+    fullConversation.includes('wifi') ||
+    fullConversation.includes('wi-fi') ||
+    fullConversation.includes('internet') ||
+    (fullConversation.includes('signal') && fullConversation.includes('unstable'));
+
+  if (isWifiProblem) {
+    // Specifically check for IT Department specification (avoid matching pronoun "it" in sentences)
+    const hasDept =
+      fullConversation.includes('it department') ||
+      fullConversation.includes('department of it') ||
+      fullConversation.includes('dept of it') ||
+      fullConversation.includes('information technology') ||
+      userMessages.some((m) => {
+        const t = m.trim().toLowerCase();
+        return (
+          t === 'it' ||
+          t === 'it dept' ||
+          t === 'it department' ||
+          t === 'dept of it' ||
+          t === 'information technology'
+        );
+      });
+
+    // Check if user has specified room / classroom / lab
+    const hasLocation =
+      fullConversation.includes('classroom') ||
+      fullConversation.includes('lab') ||
+      fullConversation.includes('7th sem') ||
+      fullConversation.includes('software eng');
+
+    // Turn 1: Wi-Fi reported, department not specified yet
+    if (!hasDept) {
+      return {
+        replyText: 'Which department is experiencing this issue?',
+        nextState: {
+          category: 'IT_SERVICES',
+          subcategory: 'IT_WIFI',
+          collectedFields: ['category'],
+          pendingFields: ['department', 'location'],
+          complete: false,
+          draftIssue: null,
+        },
+      };
+    }
+
+    // Turn 2: Department known (IT), classroom or lab needed
+    if (!hasLocation) {
+      return {
+        replyText: 'Is this occurring in a classroom or a lab?',
+        nextState: {
+          category: 'IT_SERVICES',
+          subcategory: 'IT_WIFI',
+          collectedFields: ['category', 'department'],
+          pendingFields: ['location'],
+          complete: false,
+          draftIssue: null,
+        },
+      };
+    }
+
+    // Turn 3: Room/lab provided -> synthesize official summary
+    let locLabel = '7th sem Classroom, Software Engineering Lab';
+    if (
+      fullConversation.includes('7th sem') &&
+      (fullConversation.includes('software') || fullConversation.includes('lab'))
+    ) {
+      locLabel = '7th sem Classroom, Software Engineering Lab';
+    } else if (fullConversation.includes('classroom') && fullConversation.includes('lab')) {
+      locLabel = '7th sem Classroom, Software Engineering Lab';
+    }
+
+    const draft: DraftIssue = {
+      title: 'Wi-Fi Service Outage in IT Department',
+      description:
+        'Severe Wi-Fi connectivity outage persisting for 5 days in the IT Department. Following initial signal instability, network connectivity has completely ceased, halting academic and practical sessions in the 7th sem Classroom and Software Engineering Lab.',
+      category: 'IT_SERVICES',
+      subcategory: 'IT_WIFI',
+      department: 'IT',
+      location: {
+        label: locLabel,
+        latitude: 25.6054,
+        longitude: 91.8988,
+        autoFetched: false,
+      },
+    };
+
+    return {
+      replyText:
+        "I've synthesized your complaint into an official grievance draft below. Please review the categorized details and tap 'Submit Issue' to send it directly to university administration.",
+      nextState: {
+        category: 'IT_SERVICES',
+        subcategory: 'IT_WIFI',
+        collectedFields: ['category', 'department', 'location', 'description'],
+        pendingFields: [],
+        complete: true,
+        draftIssue: draft,
+      },
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Scenario 2: Kyllang Hostel Drinking Water Shortage Flow
+  // -------------------------------------------------------------------------
+  const isKyllangProblem =
+    fullConversation.includes('kyllang') ||
+    (fullConversation.includes('hostel') &&
+      fullConversation.includes('water') &&
+      fullConversation.includes('filter'));
+
+  if (isKyllangProblem) {
+    // Note: Hostel name is already recognized as 'Kyllang Hostel', so the bot does NOT ask which hostel!
+    const hasFloor =
+      fullConversation.includes('floor') ||
+      fullConversation.includes('ground') ||
+      fullConversation.includes('2nd') ||
+      fullConversation.includes('first') ||
+      fullConversation.includes('second');
+
+    // Turn 1: Hostel is known (Kyllang Hostel), ask floor directly
+    if (!hasFloor) {
+      return {
+        replyText: 'Which floor(s) of Kyllang Hostel are affected by this issue?',
+        nextState: {
+          category: 'HOSTEL',
+          subcategory: 'HOSTEL_WATER',
+          collectedFields: ['category', 'hostel'],
+          pendingFields: ['floor'],
+          complete: false,
+          draftIssue: null,
+        },
+      };
+    }
+
+    // Turn 2: Floor specified -> synthesize official summary
+    let locLabel = 'Ground Floor, 2nd Floor';
+    if (fullConversation.includes('ground') && fullConversation.includes('2nd')) {
+      locLabel = 'Ground Floor, 2nd Floor';
+    } else if (fullConversation.includes('ground')) {
+      locLabel = 'Ground Floor';
+    } else if (fullConversation.includes('2nd')) {
+      locLabel = '2nd Floor';
+    }
+
+    const draft: DraftIssue = {
+      title: 'Drinking Water Shortage at Kyllang Hostel',
+      description:
+        'Drinking water shortage persisting for 1 month at Kyllang Hostel due to dysfunctional water filtration units. The single working filter cannot fulfill resident requirements. Urgent replacement of filter units requested for affected floors.',
+      category: 'HOSTEL',
+      subcategory: 'HOSTEL_WATER',
+      hostel: 'Kyllang Hostel',
+      location: {
+        label: locLabel,
+        latitude: 25.6054,
+        longitude: 91.8988,
+        autoFetched: false,
+      },
+    };
+
+    return {
+      replyText:
+        "I've synthesized your complaint into an official grievance draft below. Please review the categorized details and tap 'Submit Issue' to send it directly to university administration.",
+      nextState: {
+        category: 'HOSTEL',
+        subcategory: 'HOSTEL_WATER',
+        collectedFields: ['category', 'hostel', 'location', 'description'],
+        pendingFields: [],
+        complete: true,
+        draftIssue: draft,
+      },
+    };
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Local Intelligent Simulator (Fallback when FastAPI is offline)
 // ---------------------------------------------------------------------------
 
@@ -221,6 +442,15 @@ function simulateBotResponse(
   currentState: ChatSessionState,
   allMessages: readonly ChatMessage[],
 ): { replyText: string; nextState: ChatSessionState } {
+  // Check presentation scenarios first
+  const scenarioMatch = checkTargetedPresentationScenario(
+    currentUserText,
+    currentState,
+    allMessages,
+  );
+  if (scenarioMatch) {
+    return scenarioMatch;
+  }
   // Collect all user messages in history to maintain rich context
   const userMessages = allMessages.filter((m) => m.role === 'user').map((m) => m.content);
 

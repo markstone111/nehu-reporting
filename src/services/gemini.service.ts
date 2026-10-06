@@ -66,6 +66,8 @@ Rules:
    - description: Formal, professional grievance report preserving all factual details reported by the student.
    - complete: true.
    - replyText: A warm sentence presenting the draft below for the student's confirmation.
+6. If reporting a departmental Wi-Fi or lab issue and the specific department is not named, ask "Which department is experiencing this issue?". Once department is identified, ask "Is this occurring in a classroom or a lab?".
+7. If the user already mentions their hostel (e.g. Kyllang Hostel, BH1, GH2), NEVER ask which hostel. Immediately identify the missing detail (e.g. which floor or room).
 
 You MUST respond strictly with a valid JSON object matching this schema:
 {

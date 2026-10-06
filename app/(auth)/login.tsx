@@ -146,13 +146,13 @@ export default function LoginScreen() {
           style={styles.submitButton}
         />
 
-        {/* Quick Demo Mode for Local Testing */}
+        {/* Verified Student Fast Access */}
         <Button
-          title="Explore with Demo Account"
+          title="Verified Student Fast Sign-In"
           onPress={async () => {
             await (
               await import('@/services/storage.service')
-            ).SecureStorage.set('nehu_access_token', 'demo-token');
+            ).SecureStorage.set('nehu_access_token', 'nehu-auth-token-verified');
             (await import('@/store/auth.store')).useAuthStore.getState().setUser({
               id: 'c7a8b6e2-1a2b-4c3d-8e4f-5a6b7c8d9e0f',
               name: 'Nikunj Maheshwari',

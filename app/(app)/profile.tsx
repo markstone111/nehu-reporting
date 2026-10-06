@@ -135,7 +135,7 @@ export default function ProfileScreen() {
               <Text style={styles.devTitle}>Developer Mode Active</Text>
             </View>
             <Text style={styles.devDesc}>
-              You can override backend API URLs for Go server local testing.
+              Configure university API gateway and network endpoints.
             </Text>
             <Button
               title="Configure API Endpoint"
