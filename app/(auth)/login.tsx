@@ -14,6 +14,7 @@ import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { useAuth } from '@/hooks/useAuth';
+import { NotificationService } from '@/services/notification.service';
 import { validateEmail, validatePassword } from '@/utils/validation.utils';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '@/constants/theme';
 
@@ -60,10 +61,11 @@ export default function LoginScreen() {
     }
 
     try {
+      const fcmToken = await NotificationService.getStoredToken();
       await login({
         email: email.trim().toLowerCase(),
         password,
-        fcmToken: null, // Initial login without FCM or updated later
+        fcmToken: fcmToken ?? null,
       });
       // Route transition is handled automatically in useAuth on success
     } catch {
@@ -107,7 +109,7 @@ export default function LoginScreen() {
         {/* Email Input */}
         <Input
           label="University Email"
-          placeholder="e.g. rollno@students.nehu.ac.in"
+          placeholder="e.g. username@nehu.ac.in"
           value={email}
           onChangeText={handleEmailChange}
           error={emailError}
@@ -182,7 +184,7 @@ export default function LoginScreen() {
       {/* Campus Support Footer */}
       <View style={styles.systemInfoFooter}>
         <Ionicons name="shield-checkmark-outline" size={14} color={COLORS.gray500} />
-        <Text style={styles.systemInfoText}>Official NEHU Campus Redressal Portal</Text>
+        <Text style={styles.systemInfoText}>NEHU Campus Redressal Portal</Text>
       </View>
     </ScreenWrapper>
   );

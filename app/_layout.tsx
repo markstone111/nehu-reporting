@@ -14,10 +14,11 @@
  *   dev/    — Hidden developer settings
  */
 
-import { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as Notifications from 'expo-notifications';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet } from 'react-native';
@@ -28,6 +29,9 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
+import { NotificationService } from '@/services/notification.service';
+import { NotificationToast } from '@/components/notification/NotificationToast';
+import { NOTIFICATION_QUERY_KEYS } from '@/hooks/useNotifications';
 
 // Keep the splash screen visible until fonts are loaded
 SplashScreen.preventAutoHideAsync();
@@ -51,6 +55,88 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// ---------------------------------------------------------------------------
+// Notification Bootstrap & Deep Link Component
+// ---------------------------------------------------------------------------
+
+function NotificationBootstrap() {
+  const router = useRouter();
+  const queryClientInstance = useQueryClient();
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    issueId?: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+  });
+
+  useEffect(() => {
+    // 1. Initialize FCM registration & channel setup
+    NotificationService.registerForPushNotifications();
+
+    // 2. Token refresh listener
+    const refreshSub = NotificationService.setupTokenRefreshListener();
+
+    // 3. Foreground notification arrival listener
+    const foregroundSub = Notifications.addNotificationReceivedListener((notification) => {
+      const payload = NotificationService.extractPayload(notification);
+      const title = notification.request.content.title ?? 'Campus Update';
+      const body = notification.request.content.body ?? '';
+
+      // Invalidate queries so lists update in real-time
+      queryClientInstance.invalidateQueries({ queryKey: NOTIFICATION_QUERY_KEYS.all });
+      queryClientInstance.invalidateQueries({ queryKey: ['issues'] });
+
+      // Trigger floating in-app banner
+      setToast({
+        visible: true,
+        title,
+        message: body,
+        ...(payload.issueId ? { issueId: payload.issueId } : {}),
+      });
+    });
+
+    // 4. Notification response listener (user tapped notification in system tray)
+    const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const notification = response.notification;
+      const payload = NotificationService.extractPayload(notification);
+
+      if (payload.issueId) {
+        router.push({
+          pathname: '/(app)/issues/[id]',
+          params: { id: payload.issueId },
+        });
+      }
+    });
+
+    return () => {
+      refreshSub?.remove();
+      foregroundSub.remove();
+      responseSub.remove();
+    };
+  }, [router, queryClientInstance]);
+
+  return (
+    <NotificationToast
+      visible={toast.visible}
+      title={toast.title}
+      message={toast.message}
+      onDismiss={() => setToast((prev) => ({ ...prev, visible: false }))}
+      onPress={() => {
+        if (toast.issueId) {
+          router.push({
+            pathname: '/(app)/issues/[id]',
+            params: { id: toast.issueId },
+          });
+        }
+      }}
+    />
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Root Layout Component
@@ -80,6 +166,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <QueryClientProvider client={queryClient}>
         <StatusBar style="dark" />
+        <NotificationBootstrap />
         <Stack screenOptions={{ headerShown: false }}>
           {/*
            * (auth) group: login and register screens.
@@ -97,7 +184,7 @@ export default function RootLayout() {
            * dev/ group: hidden developer settings.
            * Accessible via long-press on version text in Profile screen.
            */}
-          <Stack.Screen name="dev" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="dev/settings" options={{ presentation: 'modal' }} />
         </Stack>
       </QueryClientProvider>
     </GestureHandlerRootView>

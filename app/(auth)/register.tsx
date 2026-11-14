@@ -14,6 +14,7 @@ import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { useAuth } from '@/hooks/useAuth';
+import { NotificationService } from '@/services/notification.service';
 import {
   pickIdCardFromGallery,
   takeIdCardWithCamera,
@@ -149,13 +150,14 @@ export default function RegisterScreen() {
     }
 
     try {
+      const fcmToken = await NotificationService.getStoredToken();
       await register({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
         role,
         idCardImageBase64: idCardImage.base64,
-        fcmToken: null,
+        fcmToken: fcmToken ?? null,
       });
       // Navigation is handled automatically in useAuth on success
     } catch {
@@ -244,7 +246,7 @@ export default function RegisterScreen() {
         {/* University Email */}
         <Input
           label="University Email"
-          placeholder="e.g. rollno@students.nehu.ac.in"
+          placeholder="e.g. username@nehu.ac.in"
           value={email}
           onChangeText={handleEmailChange}
           error={emailError}

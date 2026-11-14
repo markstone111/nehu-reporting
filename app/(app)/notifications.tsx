@@ -4,106 +4,76 @@
  * Real-time notification hub for NEHU campus members.
  * Displays grievance lifecycle updates, administrative remarks,
  * assignment notices, and university advisories.
+ *
+ * Connected to useNotifications hook with resilient offline demo fallback
+ * and full backend sync support.
  */
 
 import { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { ScreenWrapper } from '@/components/layout/ScreenWrapper';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
+import {
+  useNotifications,
+  useMarkNotificationAsRead,
+  useMarkAllNotificationsAsRead,
+} from '@/hooks/useNotifications';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '@/constants/theme';
-
-interface CampusNotification {
-  id: string;
-  category: 'Grievance' | 'Administrative';
-  status: 'In Progress' | 'Under Review' | 'Resolved' | 'Notice';
-  title: string;
-  message: string;
-  timestamp: string;
-  isRead: boolean;
-  issueId?: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  badgeVariant: 'primary' | 'warning' | 'success' | 'neutral';
-}
-
-const INITIAL_NOTIFICATIONS: CampusNotification[] = [
-  {
-    id: 'notif-1',
-    category: 'Grievance',
-    status: 'In Progress',
-    title: 'Wi-Fi Outage Assigned to Network Engineering',
-    message:
-      'Grievance #IT-9402 (7th sem Classroom & Software Lab) assigned to Senior Network Engineer for hardware diagnostic.',
-    timestamp: '12m ago',
-    isRead: false,
-    issueId: 'c1-wifi-it',
-    icon: 'wifi-outline',
-    badgeVariant: 'primary',
-  },
-  {
-    id: 'notif-2',
-    category: 'Grievance',
-    status: 'Under Review',
-    title: 'Kyllang Hostel Water Filtration Inspection',
-    message:
-      'Estate & Sanitation department scheduled technician visit to replace purifier membranes on Ground & 2nd Floor.',
-    timestamp: '1h ago',
-    isRead: false,
-    issueId: 'c2-water-kyllang',
-    icon: 'water-outline',
-    badgeVariant: 'warning',
-  },
-  {
-    id: 'notif-3',
-    category: 'Grievance',
-    status: 'Resolved',
-    title: 'Grievance #HYG-3180 Resolved',
-    message:
-      'Housekeeping staff cleared overflowing dustbins and sanitized 2nd Floor corridor in School of Technology.',
-    timestamp: 'Yesterday',
-    isRead: true,
-    issueId: 'c3-hygiene-sot',
-    icon: 'checkmark-circle-outline',
-    badgeVariant: 'success',
-  },
-  {
-    id: 'notif-4',
-    category: 'Administrative',
-    status: 'Notice',
-    title: 'Central Campus Fiber Gateway Maintenance',
-    message:
-      'Computer Centre scheduled core router maintenance on Saturday 2:00 AM – 5:00 AM. Intermittent drops expected.',
-    timestamp: '2 days ago',
-    isRead: true,
-    icon: 'construct-outline',
-    badgeVariant: 'neutral',
-  },
-];
+import type { AppNotification } from '@/types/api.types';
 
 type FilterTab = 'ALL' | 'GRIEVANCES' | 'ADMINISTRATIVE';
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const [notifications, setNotifications] = useState<CampusNotification[]>(INITIAL_NOTIFICATIONS);
   const [activeTab, setActiveTab] = useState<FilterTab>('ALL');
-  const [refreshing, setRefreshing] = useState(false);
+
+  const { data, refetch, isRefetching } = useNotifications({
+    filter: activeTab,
+  });
+
+  const markAsReadMutation = useMarkNotificationAsRead();
+  const markAllReadMutation = useMarkAllNotificationsAsRead();
+
+  const notifications = data?.data ?? [];
+  const unreadCount = data?.unreadCount ?? notifications.filter((n) => !n.isRead).length;
 
   const handleRefresh = async () => {
-    setRefreshing(true);
-    await new Promise((res) => setTimeout(res, 600));
-    setRefreshing(false);
+    await refetch();
+  };
+
+  const handleSimulateNotification = async () => {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Wi-Fi Outage Assigned to Network Engineering',
+          body: 'Grievance #IT-9402 has been assigned to Senior Network Engineer for hardware diagnostic.',
+          data: {
+            type: 'ASSIGNED',
+            issueId: 'c1-wifi-it',
+            status: 'IN_PROGRESS',
+            category: 'IT_SERVICES',
+          },
+        },
+        trigger: null,
+      });
+    } catch {
+      // Non-fatal simulation error
+    }
   };
 
   const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    markAllReadMutation.mutate();
   };
 
-  const handleNotificationPress = (notif: CampusNotification) => {
-    // Mark as read
-    setNotifications((prev) => prev.map((n) => (n.id === notif.id ? { ...n, isRead: true } : n)));
+  const handleNotificationPress = (notif: AppNotification) => {
+    if (!notif.isRead) {
+      markAsReadMutation.mutate(notif.id);
+    }
 
     if (notif.issueId) {
       router.push({
@@ -113,13 +83,8 @@ export default function NotificationsScreen() {
     }
   };
 
-  const filteredNotifications = notifications.filter((n) => {
-    if (activeTab === 'GRIEVANCES') return n.category === 'Grievance';
-    if (activeTab === 'ADMINISTRATIVE') return n.category === 'Administrative';
-    return true;
-  });
-
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const grievancesCount = notifications.filter((n) => n.category === 'Grievance').length;
+  const adminCount = notifications.filter((n) => n.category === 'Administrative').length;
 
   return (
     <ScreenWrapper scrollable={false} backgroundColor={COLORS.gray50}>
@@ -129,17 +94,28 @@ export default function NotificationsScreen() {
           unreadCount > 0 ? `${unreadCount} unread university updates` : 'All updates reviewed'
         }
         rightElement={
-          unreadCount > 0 ? (
+          <View style={styles.headerActionsGroup}>
             <Pressable
-              onPress={handleMarkAllRead}
+              onPress={handleSimulateNotification}
               hitSlop={8}
               style={styles.headerActionBtn}
               accessibilityRole="button"
-              accessibilityLabel="Mark all read"
+              accessibilityLabel="Simulate incoming push alert"
             >
-              <Ionicons name="checkmark-done-outline" size={20} color={COLORS.primary} />
+              <Ionicons name="notifications-circle-outline" size={24} color={COLORS.primary} />
             </Pressable>
-          ) : undefined
+            {unreadCount > 0 && (
+              <Pressable
+                onPress={handleMarkAllRead}
+                hitSlop={8}
+                style={styles.headerActionBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Mark all read"
+              >
+                <Ionicons name="checkmark-done-outline" size={22} color={COLORS.gray600} />
+              </Pressable>
+            )}
+          </View>
         }
       />
 
@@ -160,7 +136,7 @@ export default function NotificationsScreen() {
           <Text
             style={[styles.tabChipText, activeTab === 'GRIEVANCES' && styles.tabChipTextActive]}
           >
-            Grievances (3)
+            Grievances ({activeTab === 'GRIEVANCES' ? notifications.length : grievancesCount})
           </Text>
         </Pressable>
         <Pressable
@@ -170,58 +146,80 @@ export default function NotificationsScreen() {
           <Text
             style={[styles.tabChipText, activeTab === 'ADMINISTRATIVE' && styles.tabChipTextActive]}
           >
-            Advisory (1)
+            Advisory ({activeTab === 'ADMINISTRATIVE' ? notifications.length : adminCount})
           </Text>
         </Pressable>
       </View>
 
       {/* Notifications List */}
       <FlatList
-        data={filteredNotifications}
+        data={notifications}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
+            refreshing={isRefetching}
             onRefresh={handleRefresh}
             colors={[COLORS.primary]}
             tintColor={COLORS.primary}
           />
         }
-        renderItem={({ item }) => (
-          <Pressable onPress={() => handleNotificationPress(item)}>
-            <Card
-              variant="elevated"
-              padding="md"
-              style={[styles.notifCard, !item.isRead && styles.notifCardUnread]}
-            >
-              <View style={styles.cardHeaderRow}>
-                <View style={styles.iconCircle}>
-                  <Ionicons name={item.icon} size={18} color={COLORS.primary} />
-                </View>
-                <View style={styles.headerInfoCol}>
-                  <View style={styles.badgeRow}>
-                    <Badge label={item.status} variant={item.badgeVariant} size="sm" />
-                    <Text style={styles.timestampText}>{item.timestamp}</Text>
-                  </View>
-                  <Text style={styles.notifTitle} numberOfLines={2}>
-                    {item.title}
-                  </Text>
-                </View>
-                {!item.isRead && <View style={styles.unreadDot} />}
-              </View>
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="notifications-off-outline" size={48} color={COLORS.gray300} />
+            <Text style={styles.emptyTitle}>No Notifications</Text>
+            <Text style={styles.emptySubtitle}>
+              You are all caught up! New grievance status changes and campus notices will appear here.
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => {
+          const iconName = (item.icon ?? 'notifications-outline') as keyof typeof Ionicons.glyphMap;
+          const badgeVariant = item.badgeVariant ?? 'primary';
+          const statusLabel = item.status ?? 'Notice';
 
-              <Text style={styles.notifMessage}>{item.message}</Text>
-            </Card>
-          </Pressable>
-        )}
+          return (
+            <Pressable onPress={() => handleNotificationPress(item)}>
+              <Card
+                variant="elevated"
+                padding="md"
+                style={[styles.notifCard, !item.isRead && styles.notifCardUnread]}
+              >
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.iconCircle}>
+                    <Ionicons name={iconName} size={18} color={COLORS.primary} />
+                  </View>
+                  <View style={styles.headerInfoCol}>
+                    <View style={styles.badgeRow}>
+                      <Badge label={statusLabel} variant={badgeVariant} size="sm" />
+                      <Text style={styles.timestampText}>
+                        {item.timestamp ?? new Date(item.createdAt).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    <Text style={styles.notifTitle} numberOfLines={2}>
+                      {item.title}
+                    </Text>
+                  </View>
+                  {!item.isRead && <View style={styles.unreadDot} />}
+                </View>
+
+                <Text style={styles.notifMessage}>{item.message}</Text>
+              </Card>
+            </Pressable>
+          );
+        }}
       />
     </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
+  headerActionsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
   headerActionBtn: {
     padding: SPACING.xxs,
   },
@@ -254,6 +252,7 @@ const styles = StyleSheet.create({
   listContent: {
     padding: SPACING.base,
     gap: SPACING.sm,
+    flexGrow: 1,
   },
   notifCard: {
     backgroundColor: COLORS.white,
@@ -313,5 +312,26 @@ const styles = StyleSheet.create({
     color: COLORS.gray600,
     lineHeight: 17,
     marginTop: 2,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xxl,
+    paddingHorizontal: SPACING.lg,
+  },
+  emptyTitle: {
+    fontFamily: TYPOGRAPHY.fontFamily.bold,
+    fontSize: TYPOGRAPHY.fontSize.md,
+    color: COLORS.gray800,
+    marginTop: SPACING.md,
+  },
+  emptySubtitle: {
+    fontFamily: TYPOGRAPHY.fontFamily.regular,
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.gray500,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
+    lineHeight: 20,
   },
 });

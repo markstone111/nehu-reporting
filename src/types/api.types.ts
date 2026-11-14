@@ -93,6 +93,12 @@ export interface RefreshTokenRequest {
 export interface UpdateFcmTokenRequest {
   readonly fcmToken: string;
   readonly platform: 'android' | 'ios';
+  readonly deviceModel?: string;
+  readonly appVersion?: string;
+}
+
+export interface DeleteFcmTokenRequest {
+  readonly fcmToken: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,14 +239,54 @@ export interface ChatMessageResponse {
 // Notification Types
 // ---------------------------------------------------------------------------
 
-export type NotificationType = 'STATUS_CHANGE' | 'ASSIGNED' | 'RESOLVED' | 'ESCALATED' | 'COMMENT';
+export type NotificationType =
+  | 'SUBMITTED'
+  | 'UNDER_REVIEW'
+  | 'ASSIGNED'
+  | 'IN_PROGRESS'
+  | 'RESOLVED'
+  | 'CLOSED'
+  | 'ESCALATED'
+  | 'COMMENT'
+  | 'DUPLICATE_LINK'
+  | 'NOTICE';
 
 export interface AppNotification {
   readonly id: UUID;
+  readonly category: 'Grievance' | 'Administrative';
   readonly type: NotificationType;
+  readonly status?: string;
   readonly title: string;
-  readonly body: string;
+  readonly message: string;
   readonly issueId: UUID | null; // Deep link target
   readonly isRead: boolean;
   readonly createdAt: ISODateString;
+  readonly timestamp?: string;
+  readonly icon?: string;
+  readonly badgeVariant?: 'primary' | 'warning' | 'success' | 'neutral';
+}
+
+export interface GetNotificationsRequest {
+  readonly page?: number;
+  readonly pageSize?: number;
+  readonly filter?: 'ALL' | 'GRIEVANCES' | 'ADMINISTRATIVE';
+}
+
+export interface GetNotificationsResponse extends Paginated<AppNotification> {
+  readonly unreadCount: number;
+}
+
+export interface UnreadCountResponse {
+  readonly unreadCount: number;
+}
+
+export interface MarkAsReadResponse {
+  readonly id: UUID;
+  readonly isRead: boolean;
+  readonly readAt: ISODateString;
+}
+
+export interface MarkAllReadResponse {
+  readonly markedCount: number;
+  readonly message: string;
 }

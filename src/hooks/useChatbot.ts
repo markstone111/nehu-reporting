@@ -121,7 +121,7 @@ export function useChatbot() {
         };
 
         setMessages((prev) => [...prev, botMsg]);
-      } catch (err: unknown) {
+      } catch {
         // Fallback 1: Direct Google Gemini AI (if key is configured in .env)
         let processedByGemini = false;
         if (geminiService.hasApiKey()) {

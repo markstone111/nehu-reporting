@@ -34,10 +34,9 @@ export default function MyIssuesScreen() {
   const [activeTab, setActiveTab] = useState<FilterTab>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const allIssues = issuesData?.data ?? [];
-
   // Filter and search logic
   const filteredIssues = useMemo(() => {
+    const allIssues = issuesData?.data ?? [];
     return allIssues.filter((issue) => {
       // 1. Tab filter
       if (activeTab === 'ACTIVE') {
@@ -68,7 +67,7 @@ export default function MyIssuesScreen() {
 
       return true;
     });
-  }, [allIssues, activeTab, searchQuery]);
+  }, [issuesData?.data, activeTab, searchQuery]);
 
   const handleIssuePress = (issue: IssueSummary) => {
     router.push(`/(app)/issues/${issue.id}`);

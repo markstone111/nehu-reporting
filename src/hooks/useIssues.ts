@@ -162,7 +162,7 @@ export function useMyIssues(params: GetIssuesRequest = {}) {
         const response = await issuesApi.getMyIssues(params);
         logger.log('USER_ACTION', `Fetched grievances list (total: ${response.data.length})`);
         return response;
-      } catch (err) {
+      } catch {
         // Fallback to demo issues if server is unreachable
         let filtered = [...DEMO_ISSUES];
         if (params.status) {
@@ -267,7 +267,7 @@ export function useSubmitIssue() {
           },
         );
         return res;
-      } catch (err) {
+      } catch {
         // Fallback for demo / offline phone testing
         const now = new Date().toISOString();
         const newId = `demo-${Date.now()}`;

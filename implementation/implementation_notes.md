@@ -135,12 +135,26 @@
 - `app/(app)/profile.tsx` — Polished developer mode text to official university gateway terminology
 - TypeScript check: **0 errors**
 
-## Next: Phase 8 — Notifications
+### Phase 8 — Notifications & Remote Alert System ✅
 
-- FCM service setup (Push notifications)
-- Notification history screen (`app/(app)/notifications.tsx`)
-- In-app foreground toast
-- Deep link navigation handler
+- `app.json` — Linked `googleServicesFile: "./google-services.json"` and configured `expo-notifications` plugin with NEHU blue branding
+- `src/services/notification.service.ts` — FCM device push token generation (`Notifications.getDevicePushTokenAsync()`), Android Notification Channels (`nehu_grievance_updates`, `nehu_campus_advisories`), runtime permission flow, encrypted token persistence in `SecureStorage`, and backend synchronization
+- `src/components/notification/NotificationToast.tsx` — Canva-inspired animated floating top banner for foreground push alerts with tap-to-navigate
+- `src/hooks/useNotifications.ts` — TanStack Query hooks (`useNotifications`, `useUnreadNotificationCount`, `useMarkNotificationAsRead`, `useMarkAllNotificationsAsRead`, `useDeleteNotification`) with resilient offline demo fallback
+- `app/_layout.tsx` — Added `<NotificationBootstrap />` component handling FCM boot registration, token refresh listeners, foreground toast dispatch, and deep link navigation to `/(app)/issues/[id]`
+- `app/(app)/notifications.tsx` — Connected notification center to `useNotifications` with category tabs (`ALL`, `GRIEVANCES`, `ADMINISTRATIVE`), pull-to-refresh, unread badges, and 1-tap "Mark all as read"
+- `app/(app)/_layout.tsx` — Dynamic unread badge counter on the Alerts bottom tab bar
+- `src/api/notifications.api.ts` — Complete typed notification API client module
+- `docs/NOTIFICATIONS_AND_FCM_BACKEND_GUIDE.md` — Complete specification for backend team (Go + FastAPI) covering endpoints, FCM HTTP v1 JSON payloads, event triggers, and PostgreSQL schema
+- `docs/NOTIFICATION_SYSTEM_AND_DEEP_LINKING.md` — Complete mobile architectural documentation and developer testing guide
+- `docs/API_CONTRACT.md` — Updated with all notification endpoints and FCM token de-registration on logout
+- TypeScript check: **0 errors**
+- ESLint check: **0 errors, 0 warnings**
+
+## Next: Phase 9 — Profile + Dev Settings
+
+- Profile screen polish
+- Long-press → backend URL modal (hidden)
 
 ## Known Issues / Notes
 

@@ -71,6 +71,14 @@ export function useAuth() {
   const logoutMutation = useMutation({
     mutationFn: async () => {
       try {
+        const storedToken = await SecureStorage.get(STORAGE_KEYS.FCM_TOKEN);
+        if (storedToken) {
+          try {
+            await authApi.deleteFcmToken({ fcmToken: storedToken });
+          } catch {
+            // Ignore backend failure on token deletion
+          }
+        }
         await authApi.logout();
       } catch {
         // Backend logout failure should not block local cleanup

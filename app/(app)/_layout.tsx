@@ -16,11 +16,14 @@ import { Tabs, Redirect } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, selectIsAuthenticated } from '@/store/auth.store';
+import { useUnreadNotificationCount } from '@/hooks/useNotifications';
 import { COLORS, TYPOGRAPHY, SPACING } from '@/constants/theme';
 
 export default function AppLayout() {
   const isAuthenticated = useAuthStore(selectIsAuthenticated);
   const isHydrated = useAuthStore((s) => s.isHydrated);
+  const { data: unreadData } = useUnreadNotificationCount();
+  const unreadCount = unreadData?.unreadCount ?? 0;
 
   if (!isHydrated) return null;
 
@@ -77,6 +80,17 @@ export default function AppLayout() {
         name="notifications"
         options={{
           title: 'Alerts',
+          ...(unreadCount > 0
+            ? {
+                tabBarBadge: unreadCount,
+                tabBarBadgeStyle: {
+                  backgroundColor: COLORS.error,
+                  color: COLORS.white,
+                  fontSize: 10,
+                  fontFamily: TYPOGRAPHY.fontFamily.bold,
+                },
+              }
+            : {}),
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
               name={focused ? 'notifications' : 'notifications-outline'}

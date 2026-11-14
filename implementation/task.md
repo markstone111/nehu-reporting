@@ -76,12 +76,12 @@
 - [x] ChatBubble, ChatInput, TypingIndicator components
 - [x] Full chatbot screen + draft review card
 
-## Phase 8 — Notifications
+## Phase 8 — Notifications ✅
 
-- [ ] FCM service setup
-- [ ] Notification history screen
-- [ ] In-app foreground toast
-- [ ] Deep link handler
+- [x] FCM service setup
+- [x] Notification history screen
+- [x] In-app foreground toast
+- [x] Deep link handler
 
 ## Phase 9 — Profile + Dev Settings
 

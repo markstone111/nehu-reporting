@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Terminal Logger Utility — src/utils/logger.utils.ts
  *
@@ -15,7 +16,8 @@ type LogCategory =
   | 'ISSUE_SUBMIT'
   | 'CHATBOT'
   | 'LOCATION'
-  | 'STORAGE';
+  | 'STORAGE'
+  | 'NOTIF';
 
 const CATEGORY_EMOJIS: Record<LogCategory, string> = {
   AUTH: '🔐 [AUTH]',
@@ -27,6 +29,7 @@ const CATEGORY_EMOJIS: Record<LogCategory, string> = {
   CHATBOT: '🤖 [CHATBOT]',
   LOCATION: '📍 [LOCATION]',
   STORAGE: '💾 [STORAGE]',
+  NOTIF: '🔔 [NOTIF]',
 };
 
 export const logger = {

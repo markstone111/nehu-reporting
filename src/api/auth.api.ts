@@ -19,6 +19,7 @@ import type {
   AuthResponse,
   AuthTokens,
   UpdateFcmTokenRequest,
+  DeleteFcmTokenRequest,
 } from '@/types/api.types';
 
 // ---------------------------------------------------------------------------
@@ -74,5 +75,12 @@ export const authApi = {
    */
   updateFcmToken: async (data: UpdateFcmTokenRequest): Promise<void> => {
     await apiClient.patch('/auth/fcm-token', data);
+  },
+
+  /**
+   * De-register the FCM token upon user logout.
+   */
+  deleteFcmToken: async (data: DeleteFcmTokenRequest): Promise<void> => {
+    await apiClient.delete('/auth/fcm-token', { data });
   },
 };
