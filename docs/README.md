@@ -64,3 +64,4 @@ The NEHU Issue Reporting & Feedback platform connects campus members to universi
    - Refer to [`NOTIFICATIONS_AND_FCM_BACKEND_GUIDE.md`](./NOTIFICATIONS_AND_FCM_BACKEND_GUIDE.md) and [`TIMELINE_BACKEND_GUIDE.md`](./TIMELINE_BACKEND_GUIDE.md) for database schemas and exact response formats.
 3. **Working on AI / Chatbot:**
    - Refer to [`CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md`](./CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md) and [`PRESENTATION_SCENARIOS_AND_UI_SPEC.md`](./PRESENTATION_SCENARIOS_AND_UI_SPEC.md) for session state transitions.
+

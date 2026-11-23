@@ -15,6 +15,7 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { useAuth } from '@/hooks/useAuth';
 import { NotificationService } from '@/services/notification.service';
+import { scanIdCardWithOcr } from '@/api/auth.api';
 import {
   pickIdCardFromGallery,
   takeIdCardWithCamera,
@@ -41,13 +42,16 @@ export default function RegisterScreen() {
   // Form state
   const [role, setRole] = useState<UserRole>('student');
   const [name, setName] = useState('');
+  const [rollNumber, setRollNumber] = useState('');
+  const [department, setDepartment] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // ID card image state
+  // ID card image state & OCR feedback
   const [idCardImage, setIdCardImage] = useState<ProcessedImage | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [ocrNotification, setOcrNotification] = useState<string | null>(null);
 
   // Field validation errors
   const [nameError, setNameError] = useState<string | null>(null);
@@ -60,6 +64,16 @@ export default function RegisterScreen() {
   const handleNameChange = (val: string) => {
     setName(val);
     if (nameError) setNameError(null);
+    if (registerError) resetRegisterError();
+  };
+
+  const handleRollNumberChange = (val: string) => {
+    setRollNumber(val);
+    if (registerError) resetRegisterError();
+  };
+
+  const handleDepartmentChange = (val: string) => {
+    setDepartment(val);
     if (registerError) resetRegisterError();
   };
 
@@ -87,6 +101,22 @@ export default function RegisterScreen() {
       const res = await pickIdCardFromGallery();
       if (!res.canceled && res.image) {
         setIdCardImage(res.image);
+        setOcrNotification('Verifying ID card with Cloud Run PP-OCRv6...');
+        try {
+          const ocrRes = await scanIdCardWithOcr(res.image.uri);
+          if (ocrRes) {
+            if (ocrRes.name && !name) setName(ocrRes.name);
+            if (ocrRes.id_number) setRollNumber(ocrRes.id_number);
+            if (ocrRes.department) setDepartment(ocrRes.department);
+            setOcrNotification(
+              `ID Verified: ${ocrRes.name || ''} ${ocrRes.id_number ? `(${ocrRes.id_number})` : ''}`.trim()
+            );
+          } else {
+            setOcrNotification('ID card attached.');
+          }
+        } catch {
+          setOcrNotification('ID card attached.');
+        }
       } else if (res.error) {
         setIdCardError(res.error);
       }
@@ -104,6 +134,22 @@ export default function RegisterScreen() {
       const res = await takeIdCardWithCamera();
       if (!res.canceled && res.image) {
         setIdCardImage(res.image);
+        setOcrNotification('Verifying ID card with Cloud Run PP-OCRv6...');
+        try {
+          const ocrRes = await scanIdCardWithOcr(res.image.uri);
+          if (ocrRes) {
+            if (ocrRes.name && !name) setName(ocrRes.name);
+            if (ocrRes.id_number) setRollNumber(ocrRes.id_number);
+            if (ocrRes.department) setDepartment(ocrRes.department);
+            setOcrNotification(
+              `ID Verified: ${ocrRes.name || ''} ${ocrRes.id_number ? `(${ocrRes.id_number})` : ''}`.trim()
+            );
+          } else {
+            setOcrNotification('ID card attached.');
+          }
+        } catch {
+          setOcrNotification('ID card attached.');
+        }
       } else if (res.error) {
         setIdCardError(res.error);
       }
@@ -117,6 +163,7 @@ export default function RegisterScreen() {
   const handleRemoveImage = () => {
     setIdCardImage(null);
     setIdCardError(null);
+    setOcrNotification(null);
   };
 
   const handleSubmit = async () => {
@@ -153,6 +200,9 @@ export default function RegisterScreen() {
       const fcmToken = await NotificationService.getStoredToken();
       await register({
         name: name.trim(),
+        full_name: name.trim(),
+        roll_number: rollNumber.trim() || undefined,
+        department: department.trim() || 'General',
         email: email.trim().toLowerCase(),
         password,
         role,
@@ -232,6 +282,19 @@ export default function RegisterScreen() {
           </View>
         )}
 
+        {/* OCR Verified Notification */}
+        {ocrNotification && (
+          <View style={[styles.errorBanner, { backgroundColor: '#E8F5E9', borderColor: '#4CAF50' }]}>
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={18}
+              color="#2E7D32"
+              style={styles.bannerIcon}
+            />
+            <Text style={[styles.bannerText, { color: '#1B5E20' }]}>{ocrNotification}</Text>
+          </View>
+        )}
+
         {/* Full Name */}
         <Input
           label="Full Name"
@@ -241,6 +304,27 @@ export default function RegisterScreen() {
           error={nameError}
           autoCapitalize="words"
           leftIcon={<Ionicons name="person-outline" size={18} color={COLORS.gray400} />}
+        />
+
+        {/* Roll Number */}
+        <Input
+          label="Roll Number / Student ID"
+          placeholder="e.g. 2305020026"
+          value={rollNumber}
+          onChangeText={handleRollNumberChange}
+          autoCapitalize="characters"
+          leftIcon={<Ionicons name="card-outline" size={18} color={COLORS.gray400} />}
+          helperText="Auto-extracted from your ID card OCR"
+        />
+
+        {/* Department */}
+        <Input
+          label="Department"
+          placeholder="e.g. Information Technology"
+          value={department}
+          onChangeText={handleDepartmentChange}
+          autoCapitalize="words"
+          leftIcon={<Ionicons name="business-outline" size={18} color={COLORS.gray400} />}
         />
 
         {/* University Email */}

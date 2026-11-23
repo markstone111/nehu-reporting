@@ -54,6 +54,9 @@ export type UserRole = 'student' | 'staff' | 'faculty';
 export interface User {
   readonly id: UUID;
   readonly name: string;
+  readonly full_name?: string;
+  readonly roll_number?: string;
+  readonly department?: string;
   readonly email: string;
   readonly role: UserRole;
   readonly avatarUrl: string | null; // URL to ID card or profile pic
@@ -62,6 +65,9 @@ export interface User {
 
 export interface RegisterRequest {
   readonly name: string;
+  readonly full_name?: string;
+  readonly roll_number?: string;
+  readonly department?: string;
   readonly email: string;
   readonly password: string;
   readonly role: UserRole;
