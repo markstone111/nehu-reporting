@@ -39,8 +39,12 @@ export const notificationsApi = {
    * Fetch unread notification count for badge rendering.
    */
   getUnreadCount: async (): Promise<UnreadCountResponse> => {
-    const response = await apiClient.get<UnreadCountResponse>('/notifications/unread-count');
-    return response.data;
+    try {
+      const response = await apiClient.get<UnreadCountResponse>('/notifications/unread-count');
+      return response.data;
+    } catch {
+      return { unreadCount: 0 };
+    }
   },
 
   /**

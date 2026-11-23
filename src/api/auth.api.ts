@@ -12,6 +12,7 @@
  *   PATCH /auth/fcm-token — Update FCM token on the server
  */
 
+import { Platform } from 'react-native';
 import { apiClient } from '@/api/client';
 import type {
   RegisterRequest,
@@ -33,43 +34,80 @@ export interface OcrExtractedFields {
 
 /**
  * Scan ID card image with Cloud Run PP-OCRv6 microservice
+ * Uses native XMLHttpRequest to bypass JS fetch/FormData quirks on Android and iOS,
+ * directly invoking React Native's native streaming networking module with 45s cold-start timeout.
  */
 export async function scanIdCardWithOcr(imageUri: string): Promise<OcrExtractedFields | null> {
   const ocrUrl =
     process.env.EXPO_PUBLIC_OCR_URL ||
     'https://kasunwai-ocr-294086420184.asia-southeast1.run.app/api/ocr';
 
-  const formData = new FormData();
-
-  try {
-    // Convert local URI into a standard Blob (required by Expo 52+ / WinterCG expo/fetch)
-    const fileRes = await fetch(imageUri);
-    const blob = await fileRes.blob();
-    formData.append('file', blob, 'id_card.jpg');
-  } catch {
-    // Fallback for native React Native fetch
-    formData.append('file', {
-      uri: imageUri,
-      name: 'id_card.jpg',
-      type: 'image/jpeg',
-    } as any);
+  let normalizedUri = imageUri;
+  if (Platform.OS === 'android' && !normalizedUri.startsWith('file://') && !normalizedUri.startsWith('content://')) {
+    normalizedUri = `file://${normalizedUri}`;
   }
 
-  try {
-    const res = await fetch(ocrUrl, {
-      method: 'POST',
-      body: formData,
-    });
-    if (!res.ok) {
-      console.warn(`[OCR] Cloud Run scan failed with status: ${res.status}`);
-      return null;
+  return new Promise(async (resolve) => {
+    try {
+      const formData = new FormData();
+
+      if (Platform.OS === 'web') {
+        try {
+          const res = await fetch(imageUri);
+          const blob = await res.blob();
+          formData.append('file', blob, 'id_card.jpg');
+        } catch {
+          formData.append('file', {
+            uri: normalizedUri,
+            name: 'id_card.jpg',
+            type: 'image/jpeg',
+          } as any);
+        }
+      } else {
+        // Native Android & iOS: Native NetworkingModule streams local file directly via ContentResolver
+        formData.append('file', {
+          uri: normalizedUri,
+          name: 'id_card.jpg',
+          type: 'image/jpeg',
+        } as any);
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', ocrUrl);
+      xhr.timeout = 45000; // 45 seconds to accommodate Cloud Run cold starts
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            const results = data?.results || data?.extracted_data || null;
+            resolve(results);
+          } catch (err) {
+            console.warn('[OCR] JSON parse error:', err);
+            resolve(null);
+          }
+        } else {
+          console.warn(`[OCR] HTTP error ${xhr.status}: ${xhr.responseText}`);
+          resolve(null);
+        }
+      };
+
+      xhr.onerror = (e) => {
+        console.warn('[OCR] XMLHttpRequest network error:', e);
+        resolve(null);
+      };
+
+      xhr.ontimeout = () => {
+        console.warn('[OCR] Cloud Run request timed out (45s)');
+        resolve(null);
+      };
+
+      xhr.send(formData);
+    } catch (err) {
+      console.warn('[OCR] Failed to send XHR:', err);
+      resolve(null);
     }
-    const data = await res.json();
-    return data?.results || data?.extracted_data || null;
-  } catch (err) {
-    console.warn('[OCR] Cloud Run scan failed:', err);
-    return null;
-  }
+  });
 }
 
 // ---------------------------------------------------------------------------
