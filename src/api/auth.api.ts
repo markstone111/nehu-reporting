@@ -40,11 +40,20 @@ export async function scanIdCardWithOcr(imageUri: string): Promise<OcrExtractedF
     'https://kasunwai-ocr-294086420184.asia-southeast1.run.app/api/ocr';
 
   const formData = new FormData();
-  formData.append('file', {
-    uri: imageUri,
-    name: 'id_card.jpg',
-    type: 'image/jpeg',
-  } as any);
+
+  try {
+    // Convert local URI into a standard Blob (required by Expo 52+ / WinterCG expo/fetch)
+    const fileRes = await fetch(imageUri);
+    const blob = await fileRes.blob();
+    formData.append('file', blob, 'id_card.jpg');
+  } catch {
+    // Fallback for native React Native fetch
+    formData.append('file', {
+      uri: imageUri,
+      name: 'id_card.jpg',
+      type: 'image/jpeg',
+    } as any);
+  }
 
   try {
     const res = await fetch(ocrUrl, {
@@ -52,10 +61,11 @@ export async function scanIdCardWithOcr(imageUri: string): Promise<OcrExtractedF
       body: formData,
     });
     if (!res.ok) {
+      console.warn(`[OCR] Cloud Run scan failed with status: ${res.status}`);
       return null;
     }
     const data = await res.json();
-    return data?.results || null;
+    return data?.results || data?.extracted_data || null;
   } catch (err) {
     console.warn('[OCR] Cloud Run scan failed:', err);
     return null;
