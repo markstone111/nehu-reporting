@@ -14,6 +14,7 @@
 
 import { Platform } from 'react-native';
 import { apiClient } from '@/api/client';
+import { useAuthStore } from '@/store/auth.store';
 import type {
   RegisterRequest,
   LoginRequest,
@@ -250,10 +251,15 @@ export const authApi = {
   },
 
   updateFcmToken: async (data: UpdateFcmTokenRequest): Promise<void> => {
-    await apiClient.post('/notifications/token', {
+    const user = useAuthStore.getState().user;
+    const payload: Record<string, any> = {
       fcm_token: data.fcmToken,
       device_type: data.platform || 'android',
-    });
+    };
+    if (user?.id) {
+      payload.user_id = user.id;
+    }
+    await apiClient.post('/notifications/token', payload);
   },
 
   deleteFcmToken: async (data: DeleteFcmTokenRequest): Promise<void> => {

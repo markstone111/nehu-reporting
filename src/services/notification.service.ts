@@ -165,6 +165,13 @@ export const NotificationService = {
    * Sync active FCM token to the backend server
    */
   async syncTokenWithBackend(token: string): Promise<void> {
+    const accessToken = await SecureStorage.get(STORAGE_KEYS.ACCESS_TOKEN);
+    if (!accessToken) {
+      // User is not logged in yet — token is preserved in SecureStorage and syncs automatically on login
+      logger.log('NOTIF', 'Push token cached locally (will sync automatically on user login).');
+      return;
+    }
+
     try {
       await authApi.updateFcmToken({
         fcmToken: token,
@@ -172,8 +179,7 @@ export const NotificationService = {
       });
       logger.log('NOTIF', 'FCM token synced successfully with university backend.');
     } catch {
-      // Backend may be offline or user not logged in yet — safe to ignore
-      logger.log('NOTIF', 'Could not sync token with backend yet (saved locally for sync on login).');
+      logger.log('NOTIF', 'Could not sync token with backend yet.');
     }
   },
 
