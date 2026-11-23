@@ -26,7 +26,6 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios';
 import { useSettingsStore } from '@/store/settings.store';
-import { useAuthStore } from '@/store/auth.store';
 import { SecureStorage, STORAGE_KEYS } from '@/services/storage.service';
 import { API_TIMEOUTS } from '@/constants/limits';
 import { logger } from '@/utils/logger.utils';
@@ -139,9 +138,7 @@ const createApiClient = (): AxiosInstance => {
           }
           return instance(originalConfig);
         } catch {
-          // Refresh failed — force logout
-          await SecureStorage.clearAll();
-          useAuthStore.getState().clearAuth();
+          // Token refresh unavailable or failed; reject request without destroying active session
           return Promise.reject(normalizeError(error));
         }
       }

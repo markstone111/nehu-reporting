@@ -98,6 +98,50 @@ export function useChatbot() {
         return;
       }
 
+      // If Gemini AI key is configured, query Gemini directly for zero-latency triage
+      if (geminiService.hasApiKey()) {
+        try {
+          const geminiResult = await geminiService.generateGrievanceTriage(updatedMessages);
+          if (geminiResult) {
+            setSessionId((prev) => prev ?? `gemini-session-${Date.now()}`);
+            setSessionState({
+              category: geminiResult.category,
+              subcategory: geminiResult.subcategory ?? null,
+              collectedFields: ['category', 'location', 'description'],
+              pendingFields: [],
+              complete: geminiResult.complete,
+              draftIssue: geminiResult.draft || (geminiResult.complete
+                ? {
+                    title: userText.slice(0, 50),
+                    description: userText,
+                    category: geminiResult.category || 'OTHER',
+                    subcategory: geminiResult.subcategory || null,
+                    location: {
+                      label: geminiResult.location || 'Campus',
+                      latitude: null,
+                      longitude: null,
+                      autoFetched: false,
+                    },
+                  }
+                : null),
+            });
+
+            const botMsg: ChatMessage = {
+              id: `gemini-${Date.now()}`,
+              role: 'assistant',
+              content: geminiResult.replyText,
+              timestamp: new Date().toISOString(),
+            };
+
+            setMessages((prev) => [...prev, botMsg]);
+            setIsTyping(false);
+            return;
+          }
+        } catch (geminiErr) {
+          logger.warn('CHATBOT', 'Gemini generation error, falling back to rule engine', geminiErr);
+        }
+      }
+
       try {
         // Try the live FastAPI microservice
         const response = await chatbotApi.sendMessage({

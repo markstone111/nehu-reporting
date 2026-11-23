@@ -10,6 +10,7 @@
  */
 
 import { apiClient } from '@/api/client';
+import { useAuthStore } from '@/store/auth.store';
 import type {
   SubmitIssueRequest,
   SubmitIssueResponse,
@@ -18,6 +19,20 @@ import type {
   GetIssuesRequest,
   Paginated,
 } from '@/types/api.types';
+
+/**
+ * Mapping between mobile category identifiers and live Cloud SQL UUIDs / names
+ */
+const DATABASE_CATEGORY_MAP: Record<string, { id: string; name: string }> = {
+  HOSTEL: { id: '64186f49-bf76-4389-869a-323895980286', name: 'Hostel and Residential' },
+  ACADEMICS: { id: '84c22147-f812-422f-9980-04ca4d8eb17a', name: 'Academic and Department' },
+  INFRASTRUCTURE: { id: '4656baec-49de-4563-ae62-6c8e5b1fd3b6', name: 'Campus and Facilities (Central Level)' },
+  HYGIENE: { id: '4656baec-49de-4563-ae62-6c8e5b1fd3b6', name: 'Campus and Facilities (Central Level)' },
+  SAFETY: { id: '64186f49-bf76-4389-869a-323895980286', name: 'Hostel and Residential' },
+  IT_SERVICES: { id: '4656baec-49de-4563-ae62-6c8e5b1fd3b6', name: 'Campus and Facilities (Central Level)' },
+  ADMINISTRATION: { id: '84c22147-f812-422f-9980-04ca4d8eb17a', name: 'Academic and Department' },
+  OTHER: { id: '4656baec-49de-4563-ae62-6c8e5b1fd3b6', name: 'Campus and Facilities (Central Level)' },
+};
 
 export const issuesApi = {
   /**
@@ -38,6 +53,8 @@ export const issuesApi = {
       }
     }
 
+    const currentUser = useAuthStore.getState().user;
+
     const payload: Record<string, any> = {
       title: data.title,
       description: data.description,
@@ -45,11 +62,19 @@ export const issuesApi = {
       attachments: data.attachments ? Array.from(data.attachments) : [],
     };
 
-    const catVal = data.category;
-    if (catVal && /^[0-9a-fA-F-]{36}$/.test(catVal)) {
-      payload.category_id = catVal;
-    } else if (catVal) {
-      payload.category_name = catVal;
+    if (currentUser?.id) {
+      payload.user_id = currentUser.id;
+      payload.student_id = currentUser.id;
+    }
+
+    const catKey = (data.category || '').toUpperCase().trim();
+    if (DATABASE_CATEGORY_MAP[catKey]) {
+      payload.category_id = DATABASE_CATEGORY_MAP[catKey].id;
+      payload.category_name = DATABASE_CATEGORY_MAP[catKey].name;
+    } else if (catKey && /^[0-9a-fA-F-]{36}$/.test(catKey)) {
+      payload.category_id = catKey;
+    } else if (catKey) {
+      payload.category_name = data.category;
     }
 
     const subVal = data.subcategory;
@@ -74,7 +99,13 @@ export const issuesApi = {
    * Get the authenticated user's issue list (paginated summary cards).
    */
   getMyIssues: async (params: GetIssuesRequest = {}): Promise<Paginated<IssueSummary>> => {
-    const response = await apiClient.get<any>('/issues', { params });
+    const currentUser = useAuthStore.getState().user;
+    const queryParams: Record<string, any> = { ...params };
+    if (currentUser?.id && !queryParams.user_id) {
+      queryParams.user_id = currentUser.id;
+    }
+
+    const response = await apiClient.get<any>('/issues', { params: queryParams });
     const rawData = response.data?.data || response.data?.issues || response.data || [];
     const list = Array.isArray(rawData) ? rawData : rawData.data || [];
 
