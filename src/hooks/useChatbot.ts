@@ -110,20 +110,22 @@ export function useChatbot() {
               collectedFields: ['category', 'location', 'description'],
               pendingFields: [],
               complete: geminiResult.complete,
-              draftIssue: geminiResult.draft || (geminiResult.complete
-                ? {
-                    title: userText.slice(0, 50),
-                    description: userText,
-                    category: geminiResult.category || 'OTHER',
-                    subcategory: geminiResult.subcategory || null,
-                    location: {
-                      label: geminiResult.location || 'Campus',
-                      latitude: null,
-                      longitude: null,
-                      autoFetched: false,
-                    },
-                  }
-                : null),
+              draftIssue:
+                geminiResult.draft ||
+                (geminiResult.complete
+                  ? {
+                      title: userText.slice(0, 50),
+                      description: userText,
+                      category: geminiResult.category || 'OTHER',
+                      subcategory: geminiResult.subcategory || null,
+                      location: {
+                        label: geminiResult.location || 'Campus',
+                        latitude: null,
+                        longitude: null,
+                        autoFetched: false,
+                      },
+                    }
+                  : null),
             });
 
             const botMsg: ChatMessage = {

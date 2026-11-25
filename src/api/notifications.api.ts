@@ -26,9 +26,7 @@ export const notificationsApi = {
   /**
    * Fetch paginated notifications with optional filter (ALL, GRIEVANCES, ADMINISTRATIVE).
    */
-  getNotifications: async (
-    params?: GetNotificationsRequest,
-  ): Promise<GetNotificationsResponse> => {
+  getNotifications: async (params?: GetNotificationsRequest): Promise<GetNotificationsResponse> => {
     const response = await apiClient.get<GetNotificationsResponse>('/notifications', {
       params,
     });

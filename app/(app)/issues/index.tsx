@@ -148,7 +148,7 @@ export default function MyIssuesScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={() => void refetch()}
               colors={[COLORS.primary]}
               tintColor={COLORS.primary}
             />

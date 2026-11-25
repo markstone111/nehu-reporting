@@ -8,14 +8,7 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import {
-  Text,
-  View,
-  StyleSheet,
-  Pressable,
-  Animated,
-  Platform,
-} from 'react-native';
+import { Text, View, StyleSheet, Pressable, Animated, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '@/constants/theme';

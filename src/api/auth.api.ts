@@ -15,6 +15,8 @@
 import { Platform } from 'react-native';
 import { apiClient } from '@/api/client';
 import { useAuthStore } from '@/store/auth.store';
+import { SecureStorage, STORAGE_KEYS } from '@/services/storage.service';
+import { logger } from '@/utils/logger.utils';
 import type {
   RegisterRequest,
   LoginRequest,
@@ -251,14 +253,33 @@ export const authApi = {
   },
 
   updateFcmToken: async (data: UpdateFcmTokenRequest): Promise<void> => {
-    const user = useAuthStore.getState().user;
+    let userId = useAuthStore.getState().user?.id;
+    if (!userId) {
+      try {
+        const token = await SecureStorage.get(STORAGE_KEYS.ACCESS_TOKEN);
+        if (token && token.includes('.')) {
+          const raw = token.split('.')[0];
+          const decoded = atob(raw.replace(/-/g, '+').replace(/_/g, '/'));
+          const parts = decoded.split(':');
+          if (parts.length >= 2) {
+            userId = parts[0];
+          }
+        }
+      } catch {
+        // Non-blocking retrieval failure
+      }
+    }
+
+    if (!userId) {
+      logger.log('NOTIF', 'Postponing FCM token sync: waiting for user authentication.');
+      return;
+    }
+
     const payload: Record<string, any> = {
       fcm_token: data.fcmToken,
       device_type: data.platform || 'android',
+      user_id: userId,
     };
-    if (user?.id) {
-      payload.user_id = user.id;
-    }
     await apiClient.post('/notifications/token', payload);
   },
 

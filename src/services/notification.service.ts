@@ -64,7 +64,8 @@ export const NotificationService = {
     try {
       await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES, {
         name: 'Grievance Resolution Updates',
-        description: 'Instant alerts when your reported grievance changes status or receives remarks.',
+        description:
+          'Instant alerts when your reported grievance changes status or receives remarks.',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#003DA5',
@@ -138,7 +139,11 @@ export const NotificationService = {
         const deviceTokenResult = await Notifications.getDevicePushTokenAsync();
         fcmToken = typeof deviceTokenResult.data === 'string' ? deviceTokenResult.data : null;
       } catch (fcmError) {
-        logger.warn('NOTIF', 'getDevicePushTokenAsync unavailable in current environment', fcmError);
+        logger.warn(
+          'NOTIF',
+          'getDevicePushTokenAsync unavailable in current environment',
+          fcmError,
+        );
       }
 
       if (!fcmToken) {
@@ -200,7 +205,8 @@ export const NotificationService = {
 
     try {
       return Notifications.addPushTokenListener(async (tokenData) => {
-        const fcmToken = typeof tokenData.data === 'string' ? tokenData.data : String(tokenData.data);
+        const fcmToken =
+          typeof tokenData.data === 'string' ? tokenData.data : String(tokenData.data);
         logger.log('NOTIF', `Token refreshed: ${fcmToken.substring(0, 15)}...`);
         await SecureStorage.set(STORAGE_KEYS.FCM_TOKEN, fcmToken);
         await this.syncTokenWithBackend(fcmToken);
@@ -219,5 +225,80 @@ export const NotificationService = {
       return {};
     }
     return rawData as NotificationPayload;
+  },
+
+  /**
+   * Display or schedule a local device notification immediately (sound, banner, vibration).
+   * Works on both Expo Go and Production / Dev Builds.
+   */
+  async displayLocalNotification(options: {
+    title: string;
+    body: string;
+    data?: NotificationPayload;
+    channelId?: string;
+  }): Promise<string | null> {
+    try {
+      await this.setupNotificationChannels();
+      const identifier = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: options.title,
+          body: options.body,
+          data: (options.data || {}) as Record<string, unknown>,
+          sound: true,
+          vibrate: [0, 250, 250, 250],
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          ...(options.channelId ? { channelId: options.channelId } : {}),
+        },
+        trigger: null, // immediate delivery
+      });
+      logger.log('NOTIF', `Local notification triggered [${identifier}]: ${options.title}`);
+      return identifier;
+    } catch (err) {
+      logger.warn('NOTIF', 'Failed to schedule local notification', err);
+      return null;
+    }
+  },
+
+  /**
+   * Trigger immediate system notification when user submits a grievance report
+   */
+  async notifyGrievanceSubmitted(issue: {
+    id: string;
+    title: string;
+    category?: string;
+    location?: string;
+  }): Promise<void> {
+    await this.displayLocalNotification({
+      title: 'Grievance Registered ✅',
+      body: `"${issue.title}" has been submitted and queued for NEHU administration review.`,
+      channelId: NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES,
+      data: {
+        type: 'SUBMITTED',
+        issueId: issue.id,
+        status: 'SUBMITTED',
+        ...(issue.category ? { category: issue.category } : {}),
+      },
+    });
+  },
+
+  /**
+   * Trigger system notification when grievance status or technician assignment changes
+   */
+  async notifyGrievanceStatusUpdated(issue: {
+    id: string;
+    title: string;
+    status: string;
+    remarks?: string;
+  }): Promise<void> {
+    await this.displayLocalNotification({
+      title: `Grievance Update: ${issue.status}`,
+      body: issue.remarks || `Status of "${issue.title}" has been updated to ${issue.status}.`,
+      channelId: NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES,
+      data: {
+        type: issue.status,
+        issueId: issue.id,
+        status: issue.status,
+      },
+    });
   },
 };

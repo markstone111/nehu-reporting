@@ -47,7 +47,11 @@ export default function AppLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={22} color={color} />
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              size={22}
+              color={typeof color === 'string' ? color : undefined}
+            />
           ),
         }}
       />
@@ -59,7 +63,7 @@ export default function AppLayout() {
             <Ionicons
               name={focused ? 'file-tray-full' : 'file-tray-full-outline'}
               size={22}
-              color={color}
+              color={typeof color === 'string' ? color : undefined}
             />
           ),
         }}
@@ -95,7 +99,7 @@ export default function AppLayout() {
             <Ionicons
               name={focused ? 'notifications' : 'notifications-outline'}
               size={22}
-              color={color}
+              color={typeof color === 'string' ? color : undefined}
             />
           ),
         }}
@@ -105,7 +109,11 @@ export default function AppLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? 'person' : 'person-outline'} size={22} color={color} />
+            <Ionicons
+              name={focused ? 'person' : 'person-outline'}
+              size={22}
+              color={typeof color === 'string' ? color : undefined}
+            />
           ),
         }}
       />

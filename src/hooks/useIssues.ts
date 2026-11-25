@@ -10,6 +10,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { issuesApi } from '@/api/issues.api';
+import { NotificationService } from '@/services/notification.service';
 import { logger } from '@/utils/logger.utils';
 import type {
   Issue,
@@ -332,8 +333,17 @@ export function useSubmitIssue() {
         };
       }
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+
+      // Pop up instant local alert banner on device
+      NotificationService.notifyGrievanceSubmitted({
+        id: data.issueId,
+        title: variables.title,
+        category: variables.category,
+        location: variables.location?.label,
+      });
     },
   });
 }

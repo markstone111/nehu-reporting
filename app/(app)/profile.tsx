@@ -24,7 +24,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user } = useCurrentUser();
   const { logout, isLoggingOut } = useAuth();
-  const { baseApiUrl, isDevMode, setDevMode } = useSettingsStore();
+  const { isDevMode, setDevMode } = useSettingsStore();
 
   const displayName = user?.name ?? 'Campus Member';
   const displayEmail = user?.email ?? 'member@nehu.ac.in';
@@ -110,18 +110,6 @@ export default function ProfileScreen() {
               <Text style={styles.infoLabel}>Registered On</Text>
               <Text style={styles.infoValue}>
                 {user?.createdAt ? formatDateTime(user.createdAt) : 'September 2026'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconCircle}>
-              <Ionicons name="server-outline" size={18} color={COLORS.primary} />
-            </View>
-            <View style={styles.infoTextCol}>
-              <Text style={styles.infoLabel}>API Server Gateway</Text>
-              <Text style={styles.infoValue} numberOfLines={1}>
-                {baseApiUrl}
               </Text>
             </View>
           </View>

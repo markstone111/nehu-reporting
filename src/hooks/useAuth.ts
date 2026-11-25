@@ -42,7 +42,7 @@ export function useAuth() {
     setUser(response.user);
 
     // 3. Navigate into the authenticated tab application
-    router.replace('/(app)');
+    router.replace('/');
   };
 
   /**

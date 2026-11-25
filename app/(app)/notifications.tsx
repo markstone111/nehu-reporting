@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
+import { NotificationService } from '@/services/notification.service';
 import { ScreenWrapper } from '@/components/layout/ScreenWrapper';
 import { Header } from '@/components/layout/Header';
 import { Card } from '@/components/common/Card';
@@ -48,19 +48,21 @@ export default function NotificationsScreen() {
 
   const handleSimulateNotification = async () => {
     try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Wi-Fi Outage Assigned to Network Engineering',
-          body: 'Grievance #IT-9402 has been assigned to Senior Network Engineer for hardware diagnostic.',
-          data: {
-            type: 'ASSIGNED',
-            issueId: 'c1-wifi-it',
-            status: 'IN_PROGRESS',
-            category: 'IT_SERVICES',
-          },
-        },
-        trigger: null,
-      });
+      const activeIssue = notifications.find((n) => n.issueId);
+      if (activeIssue && activeIssue.issueId) {
+        await NotificationService.notifyGrievanceStatusUpdated({
+          id: activeIssue.issueId,
+          title: activeIssue.title.replace(/^Grievance Logged:\s*/, ''),
+          status: 'In Progress',
+          remarks:
+            'Estate maintenance technician has been assigned and dispatched for on-site inspection.',
+        });
+      } else {
+        await NotificationService.displayLocalNotification({
+          title: 'Campus Advisory: Fiber Maintenance',
+          body: 'NEHU Computer Centre routine core router upgrade tonight at 11:00 PM.',
+        });
+      }
     } catch {
       // Non-fatal simulation error
     }
@@ -170,7 +172,8 @@ export default function NotificationsScreen() {
             <Ionicons name="notifications-off-outline" size={48} color={COLORS.gray300} />
             <Text style={styles.emptyTitle}>No Notifications</Text>
             <Text style={styles.emptySubtitle}>
-              You are all caught up! New grievance status changes and campus notices will appear here.
+              You are all caught up! New grievance status changes and campus notices will appear
+              here.
             </Text>
           </View>
         }

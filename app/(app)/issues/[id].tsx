@@ -90,7 +90,7 @@ export default function IssueDetailScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={refetch}
+            onRefresh={() => void refetch()}
             colors={[COLORS.primary]}
             tintColor={COLORS.primary}
           />

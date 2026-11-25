@@ -8,16 +8,16 @@
 
 ## 📚 Documentation Index
 
-| Document | Primary Audience | Description |
-| :--- | :--- | :--- |
-| **[`API_CONTRACT.md`](./API_CONTRACT.md)** | Full Team (Mobile + Backend) | **Single Source of Truth.** Master bidirectional API specification detailing all request/response payloads, headers, query parameters, validation limits, and error codes. |
-| **[`NOTIFICATIONS_AND_FCM_BACKEND_GUIDE.md`](./NOTIFICATIONS_AND_FCM_BACKEND_GUIDE.md)** | Go Backend & FastAPI Engineers | Complete backend specification for Firebase Cloud Messaging (FCM HTTP v1), PostgreSQL schemas (`user_fcm_tokens`, `notifications`), push trigger matrix, and sample Go/Python dispatchers. |
-| **[`NOTIFICATION_SYSTEM_AND_DEEP_LINKING.md`](./NOTIFICATION_SYSTEM_AND_DEEP_LINKING.md)** | Mobile Engineers & QA | Comprehensive mobile architecture guide for foreground/background/killed state handling, in-app toast banners, Android notification channels, and curl test commands. |
-| **[`TIMELINE_BACKEND_GUIDE.md`](./TIMELINE_BACKEND_GUIDE.md)** | Go Backend Engineers | PostgreSQL relational schema, timeline event tracking models (`issue_timeline_events`), status progression rules, and actor attribution logic for the grievance resolution timeline. |
-| **[`CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md`](./CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md)** | FastAPI / LLM Engineers | Conversational AI triage pipeline architecture, session state machine, prompt schemas, and multi-turn field extraction (category, location, description). |
-| **[`REPORT_AND_TIMELINE_IMPLEMENTATION.md`](./REPORT_AND_TIMELINE_IMPLEMENTATION.md)** | Full Stack & Contributors | Architectural breakdown of the Standard Grievance Reporting Form, GPS acquisition, reverse geocoding, campus landmark chips, and duplicate detection UX. |
-| **[`id_card_image_from_app_to_backend.md`](./id_card_image_from_app_to_backend.md)** | Mobile & Auth Backend | Student identity verification pipeline: camera/gallery capture, on-device JPEG compression, Base64 encoding, and one-time registration upload rules. |
-| **[`PRESENTATION_SCENARIOS_AND_UI_SPEC.md`](./PRESENTATION_SCENARIOS_AND_UI_SPEC.md)** | Product Leads & Presenters | Comprehensive demonstration scenarios (Academic Wi-Fi Outage and Kyllang Hostel Water Shortage) specifying exact dialogue turns, triage state transitions, and presentation layout. |
+| Document                                                                                   | Primary Audience               | Description                                                                                                                                                                                |
+| :----------------------------------------------------------------------------------------- | :----------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **[`API_CONTRACT.md`](./API_CONTRACT.md)**                                                 | Full Team (Mobile + Backend)   | **Single Source of Truth.** Master bidirectional API specification detailing all request/response payloads, headers, query parameters, validation limits, and error codes.                 |
+| **[`NOTIFICATIONS_AND_FCM_BACKEND_GUIDE.md`](./NOTIFICATIONS_AND_FCM_BACKEND_GUIDE.md)**   | Go Backend & FastAPI Engineers | Complete backend specification for Firebase Cloud Messaging (FCM HTTP v1), PostgreSQL schemas (`user_fcm_tokens`, `notifications`), push trigger matrix, and sample Go/Python dispatchers. |
+| **[`NOTIFICATION_SYSTEM_AND_DEEP_LINKING.md`](./NOTIFICATION_SYSTEM_AND_DEEP_LINKING.md)** | Mobile Engineers & QA          | Comprehensive mobile architecture guide for foreground/background/killed state handling, in-app toast banners, Android notification channels, and curl test commands.                      |
+| **[`TIMELINE_BACKEND_GUIDE.md`](./TIMELINE_BACKEND_GUIDE.md)**                             | Go Backend Engineers           | PostgreSQL relational schema, timeline event tracking models (`issue_timeline_events`), status progression rules, and actor attribution logic for the grievance resolution timeline.       |
+| **[`CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md`](./CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md)**       | FastAPI / LLM Engineers        | Conversational AI triage pipeline architecture, session state machine, prompt schemas, and multi-turn field extraction (category, location, description).                                  |
+| **[`REPORT_AND_TIMELINE_IMPLEMENTATION.md`](./REPORT_AND_TIMELINE_IMPLEMENTATION.md)**     | Full Stack & Contributors      | Architectural breakdown of the Standard Grievance Reporting Form, GPS acquisition, reverse geocoding, campus landmark chips, and duplicate detection UX.                                   |
+| **[`id_card_image_from_app_to_backend.md`](./id_card_image_from_app_to_backend.md)**       | Mobile & Auth Backend          | Student identity verification pipeline: camera/gallery capture, on-device JPEG compression, Base64 encoding, and one-time registration upload rules.                                       |
+| **[`PRESENTATION_SCENARIOS_AND_UI_SPEC.md`](./PRESENTATION_SCENARIOS_AND_UI_SPEC.md)**     | Product Leads & Presenters     | Comprehensive demonstration scenarios (Academic Wi-Fi Outage and Kyllang Hostel Water Shortage) specifying exact dialogue turns, triage state transitions, and presentation layout.        |
 
 ---
 
@@ -64,4 +64,3 @@ The NEHU Issue Reporting & Feedback platform connects campus members to universi
    - Refer to [`NOTIFICATIONS_AND_FCM_BACKEND_GUIDE.md`](./NOTIFICATIONS_AND_FCM_BACKEND_GUIDE.md) and [`TIMELINE_BACKEND_GUIDE.md`](./TIMELINE_BACKEND_GUIDE.md) for database schemas and exact response formats.
 3. **Working on AI / Chatbot:**
    - Refer to [`CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md`](./CHATBOT_ARCHITECTURE_AND_AI_GUIDE.md) and [`PRESENTATION_SCENARIOS_AND_UI_SPEC.md`](./PRESENTATION_SCENARIOS_AND_UI_SPEC.md) for session state transitions.
-

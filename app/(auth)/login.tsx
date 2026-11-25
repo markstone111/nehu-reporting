@@ -148,30 +148,6 @@ export default function LoginScreen() {
           style={styles.submitButton}
         />
 
-        {/* Verified Student Fast Access */}
-        <Button
-          title="Verified Student Fast Sign-In"
-          onPress={async () => {
-            await (
-              await import('@/services/storage.service')
-            ).SecureStorage.set('nehu_access_token', 'nehu-auth-token-verified');
-            (await import('@/store/auth.store')).useAuthStore.getState().setUser({
-              id: 'c7a8b6e2-1a2b-4c3d-8e4f-5a6b7c8d9e0f',
-              name: 'Nikunj Maheshwari',
-              email: 'nikunj@students.nehu.ac.in',
-              role: 'student',
-              avatarUrl: null,
-              createdAt: new Date().toISOString(),
-            });
-            router.replace('/(app)');
-          }}
-          variant="outline"
-          size="md"
-          fullWidth
-          icon={<Ionicons name="flash-outline" size={16} color={COLORS.primary} />}
-          style={styles.demoButton}
-        />
-
         {/* Register Navigation Link */}
         <View style={styles.footerRow}>
           <Text style={styles.footerText}>Don't have an account?</Text>
@@ -273,9 +249,6 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   submitButton: {
-    marginBottom: SPACING.md,
-  },
-  demoButton: {
     marginBottom: SPACING.lg,
   },
   footerRow: {

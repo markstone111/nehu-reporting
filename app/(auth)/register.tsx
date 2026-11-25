@@ -109,7 +109,7 @@ export default function RegisterScreen() {
             if (ocrRes.id_number) setRollNumber(ocrRes.id_number);
             if (ocrRes.department) setDepartment(ocrRes.department);
             setOcrNotification(
-              `ID Verified: ${ocrRes.name || ''} ${ocrRes.id_number ? `(${ocrRes.id_number})` : ''}`.trim()
+              `ID Verified: ${ocrRes.name || ''} ${ocrRes.id_number ? `(${ocrRes.id_number})` : ''}`.trim(),
             );
           } else {
             setOcrNotification('ID card attached.');
@@ -142,7 +142,7 @@ export default function RegisterScreen() {
             if (ocrRes.id_number) setRollNumber(ocrRes.id_number);
             if (ocrRes.department) setDepartment(ocrRes.department);
             setOcrNotification(
-              `ID Verified: ${ocrRes.name || ''} ${ocrRes.id_number ? `(${ocrRes.id_number})` : ''}`.trim()
+              `ID Verified: ${ocrRes.name || ''} ${ocrRes.id_number ? `(${ocrRes.id_number})` : ''}`.trim(),
             );
           } else {
             setOcrNotification('ID card attached.');
@@ -284,7 +284,9 @@ export default function RegisterScreen() {
 
         {/* OCR Verified Notification */}
         {ocrNotification && (
-          <View style={[styles.errorBanner, { backgroundColor: '#E8F5E9', borderColor: '#4CAF50' }]}>
+          <View
+            style={[styles.errorBanner, { backgroundColor: '#E8F5E9', borderColor: '#4CAF50' }]}
+          >
             <Ionicons
               name="checkmark-circle-outline"
               size={18}

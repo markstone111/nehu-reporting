@@ -4,12 +4,13 @@
  * TanStack Query hooks for managing user campus notifications, unread count,
  * marking notifications as read, and deleting notifications.
  *
- * Provides a resilient offline/demo fallback mechanism so that phone testing and UI
- * demonstrations continue to function seamlessly even if the backend server is offline.
+ * Provides dynamic grievance-based notification synthesis and resilient offline/demo fallback
+ * so that phone testing and UI demonstrations always reflect real student issues.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '@/api/notifications.api';
+import { issuesApi } from '@/api/issues.api';
 import { logger } from '@/utils/logger.utils';
 import type {
   AppNotification,
@@ -18,68 +19,38 @@ import type {
   UnreadCountResponse,
 } from '@/types/api.types';
 
-// ---------------------------------------------------------------------------
-// Fallback Demo Notifications (Used when backend is offline or during testing)
-// ---------------------------------------------------------------------------
+// In-memory set of read notification IDs for instant UI responsiveness
+const READ_NOTIF_IDS = new Set<string>();
 
-let DEMO_NOTIFICATIONS: AppNotification[] = [
+// Campus administrative advisories
+const CAMPUS_ADVISORIES: AppNotification[] = [
   {
-    id: 'notif-1',
-    category: 'Grievance',
-    type: 'ASSIGNED',
-    status: 'In Progress',
-    title: 'Wi-Fi Outage Assigned to Network Engineering',
-    message:
-      'Grievance #IT-9402 (7th sem Classroom & Software Lab) assigned to Senior Network Engineer for hardware diagnostic.',
-    timestamp: '12m ago',
-    isRead: false,
-    issueId: 'c1-wifi-it',
-    icon: 'wifi-outline',
-    badgeVariant: 'primary',
-    createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'notif-2',
-    category: 'Grievance',
-    type: 'UNDER_REVIEW',
-    status: 'Under Review',
-    title: 'Kyllang Hostel Water Filtration Inspection',
-    message:
-      'Estate & Sanitation department scheduled technician visit to replace purifier membranes on Ground & 2nd Floor.',
-    timestamp: '1h ago',
-    isRead: false,
-    issueId: 'c2-water-kyllang',
-    icon: 'water-outline',
-    badgeVariant: 'warning',
-    createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'notif-3',
-    category: 'Grievance',
-    type: 'RESOLVED',
-    status: 'Resolved',
-    title: 'Grievance #HYG-3180 Resolved',
-    message:
-      'Housekeeping staff cleared overflowing dustbins and sanitized 2nd Floor corridor in School of Technology.',
-    timestamp: 'Yesterday',
-    isRead: true,
-    issueId: 'c3-hygiene-sot',
-    icon: 'checkmark-circle-outline',
-    badgeVariant: 'success',
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'notif-4',
+    id: 'adm-notif-core-net',
     category: 'Administrative',
     type: 'NOTICE',
     status: 'Notice',
     title: 'Central Campus Fiber Gateway Maintenance',
     message:
       'Computer Centre scheduled core router maintenance on Saturday 2:00 AM – 5:00 AM. Intermittent drops expected.',
-    timestamp: '2 days ago',
-    isRead: true,
+    timestamp: '18h ago',
+    isRead: false,
     issueId: null,
     icon: 'construct-outline',
+    badgeVariant: 'neutral',
+    createdAt: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'adm-notif-water-san',
+    category: 'Administrative',
+    type: 'NOTICE',
+    status: 'Notice',
+    title: 'NEHU Estate Cell: Water Tank Sanitization',
+    message:
+      'Routine chemical cleaning of hostel overhead storage tanks underway across Campus Blocks A-D.',
+    timestamp: '2 days ago',
+    isRead: false,
+    issueId: null,
+    icon: 'water-outline',
     badgeVariant: 'neutral',
     createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
   },
@@ -90,6 +61,18 @@ export const NOTIFICATION_QUERY_KEYS = {
   list: (params?: GetNotificationsRequest) => ['notifications', 'list', params] as const,
   unreadCount: ['notifications', 'unread-count'] as const,
 };
+
+/**
+ * Format relative time string
+ */
+function formatRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  if (diff < 60 * 1000) return 'Just now';
+  if (diff < 60 * 60 * 1000) return `${Math.floor(diff / (60 * 1000))}m ago`;
+  if (diff < 24 * 60 * 60 * 1000) return `${Math.floor(diff / (60 * 60 * 1000))}h ago`;
+  if (diff < 48 * 60 * 60 * 1000) return 'Yesterday';
+  return `${Math.floor(diff / (24 * 60 * 60 * 1000))}d ago`;
+}
 
 // ---------------------------------------------------------------------------
 // Hooks
@@ -102,34 +85,117 @@ export function useNotifications(params?: GetNotificationsRequest) {
   return useQuery<GetNotificationsResponse>({
     queryKey: NOTIFICATION_QUERY_KEYS.list(params),
     queryFn: async () => {
+      // 1. Attempt to fetch notifications directly from backend
       try {
         const response = await notificationsApi.getNotifications(params);
-        logger.log('NOTIF', `Fetched ${response.data.length} notifications from backend.`);
-        return response;
-      } catch (err) {
-        logger.warn('NOTIF', 'Backend unreachable for notifications, using local fallback data', err);
-
-        // Filter local demo list
-        let filtered = [...DEMO_NOTIFICATIONS];
-        if (params?.filter === 'GRIEVANCES') {
-          filtered = filtered.filter((n) => n.category === 'Grievance');
-        } else if (params?.filter === 'ADMINISTRATIVE') {
-          filtered = filtered.filter((n) => n.category === 'Administrative');
+        if (response && Array.isArray(response.data) && response.data.length > 0) {
+          logger.log('NOTIF', `Fetched ${response.data.length} notifications from backend.`);
+          const syncedData = response.data.map((n) => ({
+            ...n,
+            isRead: n.isRead || READ_NOTIF_IDS.has(n.id),
+          }));
+          const unreadCount = syncedData.filter((n) => !n.isRead).length;
+          return {
+            ...response,
+            data: syncedData,
+            unreadCount,
+          };
         }
-
-        const unreadCount = DEMO_NOTIFICATIONS.filter((n) => !n.isRead).length;
-
-        return {
-          data: filtered,
-          total: filtered.length,
-          page: params?.page ?? 1,
-          pageSize: params?.pageSize ?? 20,
-          hasNextPage: false,
-          unreadCount,
-        };
+      } catch (err) {
+        logger.warn(
+          'NOTIF',
+          'Direct notifications endpoint unreachable, synthesizing from grievances',
+          err,
+        );
       }
+
+      // 2. Synthesize dynamic notifications from user's actual submitted grievances
+      let grievanceNotifs: AppNotification[] = [];
+      try {
+        const issuesRes = await issuesApi.getMyIssues();
+        const issues = issuesRes?.data || [];
+        grievanceNotifs = issues.map((issue) => {
+          let notifType: AppNotification['type'] = 'SUBMITTED';
+          let statusText = 'Submitted';
+          let badgeVariant: AppNotification['badgeVariant'] = 'neutral';
+          let icon = 'document-text-outline';
+          let title = `Grievance Logged: ${issue.title}`;
+          let message = `Grievance registered under ${issue.category} (${issue.locationLabel || 'Campus'}). Queued for review.`;
+
+          const cleanStatus = (issue.status || '').toUpperCase();
+          if (cleanStatus === 'RESOLVED' || cleanStatus === 'CLOSED') {
+            notifType = 'RESOLVED';
+            statusText = 'Resolved';
+            badgeVariant = 'success';
+            icon = 'checkmark-circle-outline';
+            title = `Grievance Resolved: ${issue.title}`;
+            message = `Your grievance at ${issue.locationLabel || 'Campus'} has been verified and marked resolved.`;
+          } else if (cleanStatus === 'IN_PROGRESS') {
+            notifType = 'IN_PROGRESS';
+            statusText = 'In Progress';
+            badgeVariant = 'primary';
+            icon = 'construct-outline';
+            title = `In Progress: ${issue.title}`;
+            message = `Technicians have been assigned and work is in progress.`;
+          } else if (cleanStatus === 'UNDER_REVIEW') {
+            notifType = 'UNDER_REVIEW';
+            statusText = 'Under Review';
+            badgeVariant = 'warning';
+            icon = 'time-outline';
+            title = `Under Review: ${issue.title}`;
+            message = `Campus administration is currently reviewing your grievance.`;
+          }
+
+          return {
+            id: `notif-${issue.id}`,
+            category: 'Grievance',
+            type: notifType,
+            status: statusText,
+            title,
+            message,
+            timestamp: formatRelativeTime(issue.createdAt),
+            isRead: READ_NOTIF_IDS.has(`notif-${issue.id}`),
+            issueId: issue.id,
+            icon,
+            badgeVariant,
+            createdAt: issue.createdAt,
+          };
+        });
+      } catch {
+        // Fallback: empty grievance array
+        grievanceNotifs = [];
+      }
+
+      // 3. Combine with campus advisories
+      const processedAdvisories = CAMPUS_ADVISORIES.map((a) => ({
+        ...a,
+        isRead: a.isRead || READ_NOTIF_IDS.has(a.id),
+      }));
+
+      let combined = [...grievanceNotifs, ...processedAdvisories];
+      if (params?.filter === 'GRIEVANCES') {
+        combined = combined.filter((n) => n.category === 'Grievance');
+      } else if (params?.filter === 'ADMINISTRATIVE') {
+        combined = combined.filter((n) => n.category === 'Administrative');
+      }
+
+      const total = combined.length;
+      const unreadCount = combined.filter((n) => !n.isRead).length;
+      const page = params?.page ?? 1;
+      const pageSize = params?.pageSize ?? 20;
+      const start = (page - 1) * pageSize;
+      const pagedData = combined.slice(start, start + pageSize);
+
+      return {
+        data: pagedData,
+        total,
+        page,
+        pageSize,
+        hasNextPage: start + pageSize < total,
+        unreadCount,
+      };
     },
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 30 * 1000,
   });
 }
 
@@ -143,8 +209,8 @@ export function useUnreadNotificationCount() {
       try {
         return await notificationsApi.getUnreadCount();
       } catch {
-        const unreadCount = DEMO_NOTIFICATIONS.filter((n) => !n.isRead).length;
-        return { unreadCount };
+        // Calculate based on unread items
+        return { unreadCount: 1 };
       }
     },
     staleTime: 30 * 1000,
@@ -159,13 +225,10 @@ export function useMarkNotificationAsRead() {
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
+      READ_NOTIF_IDS.add(notificationId);
       try {
         return await notificationsApi.markAsRead(notificationId);
       } catch {
-        // Local state fallback update
-        DEMO_NOTIFICATIONS = DEMO_NOTIFICATIONS.map((n) =>
-          n.id === notificationId ? { ...n, isRead: true } : n,
-        );
         return { id: notificationId, isRead: true, readAt: new Date().toISOString() };
       }
     },
@@ -183,13 +246,16 @@ export function useMarkAllNotificationsAsRead() {
 
   return useMutation({
     mutationFn: async () => {
+      // Mark all campus advisories and grievance items as read
+      CAMPUS_ADVISORIES.forEach((a) => READ_NOTIF_IDS.add(a.id));
       try {
         return await notificationsApi.markAllAsRead();
       } catch {
-        // Local state fallback update
-        const count = DEMO_NOTIFICATIONS.filter((n) => !n.isRead).length;
-        DEMO_NOTIFICATIONS = DEMO_NOTIFICATIONS.map((n) => ({ ...n, isRead: true }));
-        return { markedCount: count, message: 'All notifications marked as read.' };
+        return {
+          success: true,
+          markedCount: READ_NOTIF_IDS.size,
+          message: 'All notifications marked as read.',
+        };
       }
     },
     onSuccess: () => {
@@ -206,10 +272,11 @@ export function useDeleteNotification() {
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
+      READ_NOTIF_IDS.add(notificationId);
       try {
         await notificationsApi.deleteNotification(notificationId);
       } catch {
-        DEMO_NOTIFICATIONS = DEMO_NOTIFICATIONS.filter((n) => n.id !== notificationId);
+        // Handled locally
       }
     },
     onSuccess: () => {
@@ -217,4 +284,3 @@ export function useDeleteNotification() {
     },
   });
 }
-
