@@ -261,13 +261,30 @@ export const NotificationService = {
 
   /**
    * Trigger immediate system notification when user submits a grievance report
+   * (differentiates between new reports and AI-clustered duplicate reports).
    */
   async notifyGrievanceSubmitted(issue: {
     id: string;
     title: string;
     category?: string;
     location?: string;
+    isDuplicate?: boolean;
   }): Promise<void> {
+    if (issue.isDuplicate) {
+      await this.displayLocalNotification({
+        title: 'Linked to Existing Report 🔗',
+        body: `"${issue.title}" matched an active campus grievance and was grouped for priority redressal.`,
+        channelId: NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES,
+        data: {
+          type: 'DUPLICATE_LINKED',
+          issueId: issue.id,
+          status: 'DUPLICATE_LINKED',
+          ...(issue.category ? { category: issue.category } : {}),
+        },
+      });
+      return;
+    }
+
     await this.displayLocalNotification({
       title: 'Grievance Registered ✅',
       body: `"${issue.title}" has been submitted and queued for NEHU administration review.`,
@@ -290,14 +307,56 @@ export const NotificationService = {
     status: string;
     remarks?: string;
   }): Promise<void> {
+    const normalized = issue.status.toUpperCase().replace(/\s+/g, '_');
+    const titleMap: Record<string, string> = {
+      UNDER_REVIEW: 'Grievance Under Review 👀',
+      ASSIGNED: 'Technician Assigned 🛠️',
+      IN_PROGRESS: 'Work In Progress ⚙️',
+      RESOLVED: 'Grievance Resolved ✅',
+      CLOSED: 'Grievance Closed 📁',
+      ESCALATED: 'Grievance Escalated 🚨',
+      REJECTED: 'Grievance Update ⚠️',
+      REOPENED: 'Grievance Reopened 🔄',
+    };
+
+    const friendlyTitle = titleMap[normalized] || `Grievance Update: ${issue.status}`;
+
     await this.displayLocalNotification({
-      title: `Grievance Update: ${issue.status}`,
+      title: friendlyTitle,
       body: issue.remarks || `Status of "${issue.title}" has been updated to ${issue.status}.`,
       channelId: NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES,
       data: {
-        type: issue.status,
+        type: normalized,
         issueId: issue.id,
         status: issue.status,
+      },
+    });
+  },
+
+  /**
+   * Trigger welcome notification on successful account registration
+   */
+  async notifyAccountRegistered(user: { name: string; email: string }): Promise<void> {
+    await this.displayLocalNotification({
+      title: 'Welcome to NEHU Redressal Portal 🎓',
+      body: `Hi ${user.name}, your account (${user.email}) is active. You will receive live grievance updates here.`,
+      channelId: NOTIFICATION_CHANNELS.CAMPUS_ADVISORIES,
+      data: {
+        type: 'ACCOUNT_REGISTERED',
+      },
+    });
+  },
+
+  /**
+   * Trigger notification when the AI Assistant completes a structured grievance draft
+   */
+  async notifyAiDraftReady(draftTitle: string): Promise<void> {
+    await this.displayLocalNotification({
+      title: 'AI Grievance Draft Ready ✨',
+      body: `Your draft "${draftTitle}" is ready for review and 1-tap submission.`,
+      channelId: NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES,
+      data: {
+        type: 'AI_DRAFT_READY',
       },
     });
   },

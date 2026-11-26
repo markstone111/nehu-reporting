@@ -31,7 +31,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { NotificationService } from '@/services/notification.service';
 import { NotificationToast } from '@/components/notification/NotificationToast';
-import { NOTIFICATION_QUERY_KEYS } from '@/hooks/useNotifications';
+import { NOTIFICATION_QUERY_KEYS, useIssueStatusWatcher } from '@/hooks/useNotifications';
 
 // Keep the splash screen visible until fonts are loaded
 SplashScreen.preventAutoHideAsync();
@@ -63,6 +63,7 @@ const queryClient = new QueryClient({
 function NotificationBootstrap() {
   const router = useRouter();
   const queryClientInstance = useQueryClient();
+  useIssueStatusWatcher();
   const [toast, setToast] = useState<{
     visible: boolean;
     title: string;

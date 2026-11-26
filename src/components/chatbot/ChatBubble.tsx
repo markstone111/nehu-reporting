@@ -5,6 +5,7 @@
  * Supports distinct speech bubbles, avatar chips, and formatted timestamps.
  */
 
+import { memo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ChatMessage } from '@/types/api.types';
@@ -14,7 +15,7 @@ export interface ChatBubbleProps {
   readonly message: ChatMessage;
 }
 
-export function ChatBubble({ message }: ChatBubbleProps) {
+export const ChatBubble = memo(function ChatBubble({ message }: ChatBubbleProps) {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
 
@@ -56,7 +57,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: {

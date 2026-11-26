@@ -8,7 +8,7 @@
  * for 1-tap submission.
  */
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import { useChatbot } from '@/hooks/useChatbot';
 import { useSubmitIssue } from '@/hooks/useIssues';
 import { useAuthStore } from '@/store/auth.store';
 import { capitalize } from '@/utils/text.utils';
+import { getErrorMessage } from '@/utils/error.utils';
 import type { ChatMessage, SubmitIssueRequest } from '@/types/api.types';
 import { COLORS, TYPOGRAPHY, SPACING } from '@/constants/theme';
 
@@ -64,13 +65,19 @@ export default function ChatbotReportScreen() {
     );
   };
 
-  // Scroll to bottom when new messages arrive or when typing starts
+  // Scroll to bottom immediately on next animation frame when new messages arrive
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const frameId = requestAnimationFrame(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
-    }, 150);
-    return () => clearTimeout(timer);
+    });
+    return () => cancelAnimationFrame(frameId);
   }, [messages.length, isTyping, sessionState.complete]);
+
+  const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
+  const renderMessageItem = useCallback(
+    ({ item }: { item: ChatMessage }) => <ChatBubble message={item} />,
+    [],
+  );
 
   // Submit the AI-generated draft
   const handleSubmitDraft = async () => {
@@ -129,10 +136,10 @@ export default function ChatbotReportScreen() {
         );
       }
     } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Unable to submit grievance. Please verify your connection.';
+      const message = getErrorMessage(
+        err,
+        'Unable to submit grievance. Please verify your connection.',
+      );
       Alert.alert('Submission Error', message);
     }
   };
@@ -177,10 +184,15 @@ export default function ChatbotReportScreen() {
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <ChatBubble message={item} />}
+          keyExtractor={keyExtractor}
+          renderItem={renderMessageItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={12}
+          maxToRenderPerBatch={8}
+          windowSize={7}
           ListFooterComponent={
             <View>
               {isTyping && <TypingIndicator />}

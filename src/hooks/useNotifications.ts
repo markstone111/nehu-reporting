@@ -8,9 +8,13 @@
  * so that phone testing and UI demonstrations always reflect real student issues.
  */
 
+import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi } from '@/api/notifications.api';
 import { issuesApi } from '@/api/issues.api';
+import { useAuthStore } from '@/store/auth.store';
+import { NotificationService } from '@/services/notification.service';
 import { logger } from '@/utils/logger.utils';
 import type {
   AppNotification,
@@ -21,6 +25,8 @@ import type {
 
 // In-memory set of read notification IDs for instant UI responsiveness
 const READ_NOTIF_IDS = new Set<string>();
+// Track last seen grievance status per user/issue to trigger real-time status-change alerts
+const LAST_KNOWN_ISSUE_EVENT = new Map<string, string>();
 
 // Campus administrative advisories
 const CAMPUS_ADVISORIES: AppNotification[] = [
@@ -58,9 +64,14 @@ const CAMPUS_ADVISORIES: AppNotification[] = [
 
 export const NOTIFICATION_QUERY_KEYS = {
   all: ['notifications'] as const,
-  list: (params?: GetNotificationsRequest) => ['notifications', 'list', params] as const,
-  unreadCount: ['notifications', 'unread-count'] as const,
+  list: (userId?: string, params?: GetNotificationsRequest) =>
+    ['notifications', userId ?? 'anon', 'list', params] as const,
+  unreadCount: (userId?: string) => ['notifications', userId ?? 'anon', 'unread-count'] as const,
 };
+
+function getReadKey(userId: string | undefined, notifId: string): string {
+  return `${userId ?? 'anon'}:${notifId}`;
+}
 
 /**
  * Format relative time string
@@ -82,8 +93,11 @@ function formatRelativeTime(dateStr: string): string {
  * Fetch user's campus notifications with optional category filtering and pagination.
  */
 export function useNotifications(params?: GetNotificationsRequest) {
+  const userId = useAuthStore((s) => s.user?.id);
+
   return useQuery<GetNotificationsResponse>({
-    queryKey: NOTIFICATION_QUERY_KEYS.list(params),
+    queryKey: NOTIFICATION_QUERY_KEYS.list(userId, params),
+    enabled: Boolean(userId),
     queryFn: async () => {
       // 1. Attempt to fetch notifications directly from backend
       try {
@@ -92,7 +106,7 @@ export function useNotifications(params?: GetNotificationsRequest) {
           logger.log('NOTIF', `Fetched ${response.data.length} notifications from backend.`);
           const syncedData = response.data.map((n) => ({
             ...n,
-            isRead: n.isRead || READ_NOTIF_IDS.has(n.id),
+            isRead: n.isRead || READ_NOTIF_IDS.has(getReadKey(userId, n.id)),
           }));
           const unreadCount = syncedData.filter((n) => !n.isRead).length;
           return {
@@ -109,12 +123,13 @@ export function useNotifications(params?: GetNotificationsRequest) {
         );
       }
 
-      // 2. Synthesize dynamic notifications from user's actual submitted grievances
+      // 2. Synthesize dynamic notifications strictly from the authenticated user's own grievances
       let grievanceNotifs: AppNotification[] = [];
-      try {
-        const issuesRes = await issuesApi.getMyIssues();
-        const issues = issuesRes?.data || [];
-        grievanceNotifs = issues.map((issue) => {
+      if (userId) {
+        try {
+          const issuesRes = await issuesApi.getMyIssues({ user_id: userId } as any);
+          const issues = issuesRes?.data || [];
+          grievanceNotifs = issues.map((issue) => {
           let notifType: AppNotification['type'] = 'SUBMITTED';
           let statusText = 'Submitted';
           let badgeVariant: AppNotification['badgeVariant'] = 'neutral';
@@ -154,22 +169,23 @@ export function useNotifications(params?: GetNotificationsRequest) {
             title,
             message,
             timestamp: formatRelativeTime(issue.createdAt),
-            isRead: READ_NOTIF_IDS.has(`notif-${issue.id}`),
+            isRead: READ_NOTIF_IDS.has(getReadKey(userId, `notif-${issue.id}`)),
             issueId: issue.id,
             icon,
             badgeVariant,
             createdAt: issue.createdAt,
           };
         });
-      } catch {
-        // Fallback: empty grievance array
-        grievanceNotifs = [];
+        } catch {
+          // Fallback: empty grievance array
+          grievanceNotifs = [];
+        }
       }
 
       // 3. Combine with campus advisories
       const processedAdvisories = CAMPUS_ADVISORIES.map((a) => ({
         ...a,
-        isRead: a.isRead || READ_NOTIF_IDS.has(a.id),
+        isRead: a.isRead || READ_NOTIF_IDS.has(getReadKey(userId, a.id)),
       }));
 
       let combined = [...grievanceNotifs, ...processedAdvisories];
@@ -203,14 +219,17 @@ export function useNotifications(params?: GetNotificationsRequest) {
  * Fetch unread notification count for badge display.
  */
 export function useUnreadNotificationCount() {
+  const userId = useAuthStore((s) => s.user?.id);
+
   return useQuery<UnreadCountResponse>({
-    queryKey: NOTIFICATION_QUERY_KEYS.unreadCount,
+    queryKey: NOTIFICATION_QUERY_KEYS.unreadCount(userId),
+    enabled: Boolean(userId),
     queryFn: async () => {
       try {
         return await notificationsApi.getUnreadCount();
       } catch {
         // Calculate based on unread items
-        return { unreadCount: 1 };
+        return { unreadCount: 0 };
       }
     },
     staleTime: 30 * 1000,
@@ -222,10 +241,11 @@ export function useUnreadNotificationCount() {
  */
 export function useMarkNotificationAsRead() {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((s) => s.user?.id);
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
-      READ_NOTIF_IDS.add(notificationId);
+      READ_NOTIF_IDS.add(getReadKey(userId, notificationId));
       try {
         return await notificationsApi.markAsRead(notificationId);
       } catch {
@@ -243,11 +263,12 @@ export function useMarkNotificationAsRead() {
  */
 export function useMarkAllNotificationsAsRead() {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((s) => s.user?.id);
 
   return useMutation({
     mutationFn: async () => {
-      // Mark all campus advisories and grievance items as read
-      CAMPUS_ADVISORIES.forEach((a) => READ_NOTIF_IDS.add(a.id));
+      // Mark all campus advisories and grievance items as read for this user
+      CAMPUS_ADVISORIES.forEach((a) => READ_NOTIF_IDS.add(getReadKey(userId, a.id)));
       try {
         return await notificationsApi.markAllAsRead();
       } catch {
@@ -269,10 +290,11 @@ export function useMarkAllNotificationsAsRead() {
  */
 export function useDeleteNotification() {
   const queryClient = useQueryClient();
+  const userId = useAuthStore((s) => s.user?.id);
 
   return useMutation({
     mutationFn: async (notificationId: string) => {
-      READ_NOTIF_IDS.add(notificationId);
+      READ_NOTIF_IDS.add(getReadKey(userId, notificationId));
       try {
         await notificationsApi.deleteNotification(notificationId);
       } catch {
@@ -283,4 +305,76 @@ export function useDeleteNotification() {
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_QUERY_KEYS.all });
     },
   });
+}
+
+/**
+ * Background watcher that polls the authenticated user's grievance notifications
+ * every 15s (and on app foreground resume) to trigger local device notifications
+ * immediately whenever an issue changes status.
+ */
+export function useIssueStatusWatcher() {
+  const userId = useAuthStore((s) => s.user?.id);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!userId) return;
+
+    let isCancelled = false;
+
+    const checkStatusUpdates = async () => {
+      if (isCancelled || AppState.currentState !== 'active') return;
+
+      try {
+        const res = await notificationsApi.getNotifications({
+          filter: 'GRIEVANCES',
+          page: 1,
+          pageSize: 50,
+        });
+        const items = res?.data ?? [];
+        let changed = false;
+
+        for (const item of items) {
+          if (!item.issueId) continue;
+          const key = `${userId}:${item.issueId}`;
+          const currentState = `${item.type}:${item.status}`;
+          const prevState = LAST_KNOWN_ISSUE_EVENT.get(key);
+
+          if (prevState && prevState !== currentState) {
+            changed = true;
+            const cleanTitle = item.title.replace(/^[^:]+:\s*/, '') || item.title;
+            NotificationService.notifyGrievanceStatusUpdated({
+              id: item.issueId,
+              title: cleanTitle,
+              status: item.type || item.status,
+              remarks: item.message,
+            });
+            queryClient.invalidateQueries({ queryKey: ['issue', item.issueId] });
+          }
+
+          LAST_KNOWN_ISSUE_EVENT.set(key, currentState);
+        }
+
+        if (changed) {
+          queryClient.invalidateQueries({ queryKey: NOTIFICATION_QUERY_KEYS.all });
+          queryClient.invalidateQueries({ queryKey: ['issues'] });
+        }
+      } catch {
+        // Silent retry on next poll interval
+      }
+    };
+
+    checkStatusUpdates();
+    const intervalId = setInterval(checkStatusUpdates, 15000);
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        checkStatusUpdates();
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+      clearInterval(intervalId);
+      appStateSub.remove();
+    };
+  }, [userId, queryClient]);
 }

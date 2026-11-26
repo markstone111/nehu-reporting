@@ -152,16 +152,42 @@ const DEMO_DETAIL_MAP: Record<string, Issue> = {
 // Hooks
 // ---------------------------------------------------------------------------
 
+// Track known issue statuses in memory to detect live backend transitions
+const LAST_KNOWN_ISSUE_STATUSES = new Map<string, string>();
+
 /**
  * Fetch list of issues submitted by the current user.
  */
 export function useMyIssues(params: GetIssuesRequest = {}) {
+  const queryClient = useQueryClient();
+
   return useQuery<Paginated<IssueSummary>>({
     queryKey: ['issues', params],
     queryFn: async () => {
       try {
         const response = await issuesApi.getMyIssues(params);
         logger.log('USER_ACTION', `Fetched grievances list (total: ${response.data.length})`);
+
+        // Detect status transitions since previous fetch
+        const hadBaseline = LAST_KNOWN_ISSUE_STATUSES.size > 0;
+        let hasTransition = false;
+        for (const issue of response.data) {
+          const prevStatus = LAST_KNOWN_ISSUE_STATUSES.get(issue.id);
+          if (hadBaseline && prevStatus && prevStatus !== issue.status) {
+            hasTransition = true;
+            NotificationService.notifyGrievanceStatusUpdated({
+              id: issue.id,
+              title: issue.title,
+              status: issue.status,
+            });
+          }
+          LAST_KNOWN_ISSUE_STATUSES.set(issue.id, issue.status);
+        }
+
+        if (hasTransition) {
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
+        }
+
         return response;
       } catch {
         // Fallback to demo issues if server is unreachable
@@ -343,6 +369,7 @@ export function useSubmitIssue() {
         title: variables.title,
         category: variables.category,
         location: variables.location?.label,
+        isDuplicate: data.isDuplicate,
       });
     },
   });

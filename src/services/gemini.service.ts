@@ -23,72 +23,39 @@ export interface GeminiGrievanceResult {
 }
 
 const CANDIDATE_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
   'gemini-flash-latest',
-  'gemini-3.5-flash-lite',
-  'gemini-3.8-flash',
 ] as const;
 
-const SYSTEM_PROMPT = `You are the official AI Grievance Redressal Assistant for North-Eastern Hill University (NEHU), Shillong.
-Your mission is to converse with students, faculty, and campus residents in everyday, informal English, WhatsApp-style text, or Hindi/English mix.
-You must extract the problem, categorize it, detect the specific NEHU campus location, and produce a formal, university-ready grievance draft.
+const GEMINI_REQUEST_TIMEOUT_MS = 8000;
+const MAX_CONTEXT_MESSAGES = 8;
 
-NEHU Categories and Subcategories:
-1. HOSTEL (subcategories: HOSTEL_ROOM, HOSTEL_MESS, HOSTEL_WASHROOM, HOSTEL_WATER, HOSTEL_ELECTRICITY, HOSTEL_WARDEN)
-2. ACADEMIC (subcategories: ACAD_FACULTY, ACAD_EXAM, ACAD_CLASSROOM, ACAD_TIMETABLE, ACAD_LIBRARY)
-3. INFRASTRUCTURE (subcategories: INFRA_ROAD, INFRA_LIGHTING, INFRA_BUILDING, INFRA_WATER, INFRA_POWER)
-4. IT_SERVICES (subcategories: IT_WIFI, IT_PORTAL, IT_LAB, IT_HARDWARE)
-5. SANITATION (subcategories: SANIT_TOILETS, SANIT_GARBAGE, SANIT_PESTS)
-6. SECURITY (subcategories: SEC_GATE, SEC_RAGGING, SEC_HARASSMENT, SEC_LIGHTING)
-7. TRANSPORT (subcategories: TRANS_BUS, TRANS_PARKING)
-8. HYGIENE (subcategories: HYGIENE_WASHROOM, HYGIENE_WASTE, HYGIENE_CAMPUS)
-9. OTHER (subcategories: OTHER_ADMIN, OTHER_CANTEEN, OTHER_GENERAL)
+const SYSTEM_PROMPT = `You are the AI Grievance Redressal Assistant for NEHU Shillong. Extract the issue, category, and campus location from informal English/Hindi-English text, and draft a formal report.
 
-Recognized Campus Locations at NEHU Shillong:
-- School of Technology (SoT / Engineering Block)
-- Central Library
-- Administrative Building (Admin Block)
-- Science Complex (Physics, Chemistry, Life Sciences)
-- Boys Hostels: BH1, BH2, BH3, BH4
-- Girls Hostels: GH1, GH2, GH3
-- Students Amenity Centre (SAC)
-- Health Centre / University Dispensary
-- Community Hall & Guest House
-- Campus Gate 1 & Gate 2
-- Central Mess
+Categories & Subcategories:
+- HOSTEL: HOSTEL_ROOM, HOSTEL_MESS, HOSTEL_WASHROOM, HOSTEL_WATER, HOSTEL_ELECTRICITY, HOSTEL_WARDEN
+- ACADEMIC: ACAD_FACULTY, ACAD_EXAM, ACAD_CLASSROOM, ACAD_TIMETABLE, ACAD_LIBRARY
+- INFRASTRUCTURE: INFRA_ROAD, INFRA_LIGHTING, INFRA_BUILDING, INFRA_WATER, INFRA_POWER
+- IT_SERVICES: IT_WIFI, IT_PORTAL, IT_LAB, IT_HARDWARE
+- SANITATION: SANIT_TOILETS, SANIT_GARBAGE, SANIT_PESTS
+- SECURITY: SEC_GATE, SEC_RAGGING, SEC_HARASSMENT, SEC_LIGHTING
+- TRANSPORT: TRANS_BUS, TRANS_PARKING
+- HYGIENE: HYGIENE_WASHROOM, HYGIENE_WASTE, HYGIENE_CAMPUS
+- OTHER: OTHER_ADMIN, OTHER_CANTEEN, OTHER_GENERAL
+
+Campuses/Landmarks: School of Technology (SoT / Engineering Block), Central Library, Admin Block, Science Complex, Boys Hostels (BH1-BH4, Kyllang), Girls Hostels (GH1-GH3), SAC, Health Centre, Guest House, Gate 1 & 2, Central Mess.
 
 Rules:
-1. Always be empathetic, helpful, and concise.
-2. If the user mentions "dustbins", "garbage", "trash", "overflow", "waste", "stink", categorize under HYGIENE (HYGIENE_WASTE).
-3. If the user mentions "SoT", "sot", or "engineering block", resolve to "School of Technology (Engineering Block)".
-4. If location is missing or ambiguous, ask a polite clarifying question and set complete=false, draft=null.
-5. Once location and problem description are known, synthesize a high-quality draft:
-   - title: Concise and official (max 70 chars).
-   - description: Formal, professional grievance report preserving all factual details reported by the student.
-   - complete: true.
-   - replyText: A warm sentence presenting the draft below for the student's confirmation.
-6. If reporting a departmental Wi-Fi or lab issue and the specific department is not named, ask "Which department is experiencing this issue?". Once department is identified, ask "Is this occurring in a classroom or a lab?".
-7. If the user already mentions their hostel (e.g. Kyllang Hostel, BH1, GH2), NEVER ask which hostel. Immediately identify the missing detail (e.g. which floor or room).
+1. Be empathetic and concise.
+2. "dustbins/garbage/trash/waste/stink" -> HYGIENE (HYGIENE_WASTE). "SoT/sot" -> "School of Technology (Engineering Block)".
+3. If location is missing, ask a short clarifying question (complete=false, draft=null).
+4. For departmental Wi-Fi/lab without department name, ask "Which department is experiencing this issue?", then "Is this occurring in a classroom or a lab?".
+5. If hostel name is given (e.g. Kyllang, BH1, GH2), ask only for floor/room.
+6. Once location and issue are clear: title (max 70 chars), formal description, complete=true, warm 1-sentence replyText.
 
-You MUST respond strictly with a valid JSON object matching this schema:
-{
-  "replyText": "string",
-  "category": "HYGIENE",
-  "subcategory": "HYGIENE_WASTE",
-  "location": "School of Technology (Engineering Block), 2nd Floor",
-  "complete": true,
-  "draft": {
-    "title": "string",
-    "description": "string",
-    "category": "HYGIENE",
-    "subcategory": "HYGIENE_WASTE",
-    "location": {
-      "label": "string",
-      "latitude": 25.6054,
-      "longitude": 91.8988,
-      "autoFetched": false
-    }
-  }
-}`;
+Respond strictly with valid JSON:
+{"replyText":"string","category":"HYGIENE","subcategory":"HYGIENE_WASTE","location":"string","complete":true,"draft":{"title":"string","description":"string","category":"HYGIENE","subcategory":"HYGIENE_WASTE","location":{"label":"string","latitude":25.6054,"longitude":91.8988,"autoFetched":false}}}`;
 
 export const geminiService = {
   /**
@@ -111,14 +78,17 @@ export const geminiService = {
       return null;
     }
 
-    // Format conversation history for Gemini
-    const contents = allMessages.map((m) => ({
+    // Format recent conversation history for Gemini to keep payloads fast
+    const contents = allMessages.slice(-MAX_CONTEXT_MESSAGES).map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
     }));
 
     // Try primary model, fallback to candidate models if busy
     for (const model of CANDIDATE_MODELS) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), GEMINI_REQUEST_TIMEOUT_MS);
+
       try {
         logger.log('CHATBOT', `Calling Gemini AI (${model}) for grievance triage...`);
 
@@ -129,6 +99,7 @@ export const geminiService = {
           headers: {
             'Content-Type': 'application/json',
           },
+          signal: controller.signal,
           body: JSON.stringify({
             system_instruction: {
               parts: [{ text: SYSTEM_PROMPT }],
@@ -137,6 +108,7 @@ export const geminiService = {
             generationConfig: {
               response_mime_type: 'application/json',
               temperature: 0.2,
+              maxOutputTokens: 320,
             },
           }),
         });
@@ -172,6 +144,8 @@ export const geminiService = {
         return parsed;
       } catch (err: unknown) {
         logger.warn('CHATBOT', `Gemini model ${model} execution error:`, err);
+      } finally {
+        clearTimeout(timer);
       }
     }
 
