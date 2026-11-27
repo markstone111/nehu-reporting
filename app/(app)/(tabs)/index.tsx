@@ -77,7 +77,7 @@ export default function HomeScreen() {
           </View>
 
           <Pressable
-            onPress={() => router.push('/(app)/profile')}
+            onPress={() => router.push('/profile')}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Open profile"
@@ -167,7 +167,7 @@ export default function HomeScreen() {
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Recent Grievances</Text>
           <Pressable
-            onPress={() => router.push('/(app)/issues')}
+            onPress={() => router.push('/issues')}
             hitSlop={8}
             accessibilityRole="button"
           >

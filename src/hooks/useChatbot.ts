@@ -8,9 +8,10 @@
  * local fallback state machine for offline phone testing.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { chatbotApi } from '@/api/chatbot.api';
 import { geminiService } from '@/services/gemini.service';
+import { NotificationService } from '@/services/notification.service';
 import { logger } from '@/utils/logger.utils';
 import type { ChatMessage, ChatSessionState, DraftIssue } from '@/types/api.types';
 import { ISSUE_CATEGORIES, type CategoryId } from '@/constants/categories';
@@ -42,6 +43,17 @@ export function useChatbot() {
   // Keep a reference to current session state and messages for closures
   const sessionStateRef = useRef(sessionState);
   sessionStateRef.current = sessionState;
+  const lastNotifiedDraftRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (sessionState.complete && sessionState.draftIssue) {
+      const draftKey = `${sessionId ?? 'local'}:${sessionState.draftIssue.title}`;
+      if (lastNotifiedDraftRef.current !== draftKey) {
+        lastNotifiedDraftRef.current = draftKey;
+        NotificationService.notifyAiDraftReady(sessionState.draftIssue.title);
+      }
+    }
+  }, [sessionState.complete, sessionState.draftIssue, sessionId]);
 
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -76,8 +88,6 @@ export function useChatbot() {
       );
 
       if (targeted) {
-        await new Promise((res) => setTimeout(res, 500)); // Natural typing cadence
-
         logger.log('CHATBOT', `Targeted Assistant: "${targeted.replyText}"`, {
           complete: targeted.nextState.complete,
           category: targeted.nextState.category,
@@ -98,8 +108,54 @@ export function useChatbot() {
         return;
       }
 
+      // 1. Try direct Gemini AI first if API key is configured
+      if (geminiService.hasApiKey()) {
+        try {
+          const geminiResult = await geminiService.generateGrievanceTriage(updatedMessages);
+          if (geminiResult) {
+            setSessionId((prev) => prev ?? `gemini-session-${Date.now()}`);
+            setSessionState({
+              category: geminiResult.category,
+              subcategory: geminiResult.subcategory ?? null,
+              collectedFields: ['category', 'location', 'description'],
+              pendingFields: geminiResult.complete ? [] : ['location'],
+              complete: geminiResult.complete,
+              draftIssue:
+                geminiResult.draft ||
+                (geminiResult.complete
+                  ? {
+                      title: userText.slice(0, 50),
+                      description: userText,
+                      category: geminiResult.category || 'OTHER',
+                      subcategory: geminiResult.subcategory || null,
+                      location: {
+                        label: geminiResult.location || 'Campus',
+                        latitude: null,
+                        longitude: null,
+                        autoFetched: false,
+                      },
+                    }
+                  : null),
+            });
+
+            const botMsg: ChatMessage = {
+              id: `gemini-${Date.now()}`,
+              role: 'assistant',
+              content: geminiResult.replyText,
+              timestamp: new Date().toISOString(),
+            };
+
+            setMessages((prev) => [...prev, botMsg]);
+            setIsTyping(false);
+            return;
+          }
+        } catch (geminiErr) {
+          logger.warn('CHATBOT', 'Gemini generation error, trying FastAPI/local fallback', geminiErr);
+        }
+      }
+
+      // 2. Try FastAPI microservice (with fast 6s timeout), else immediate local state machine
       try {
-        // Try the live FastAPI microservice
         const response = await chatbotApi.sendMessage({
           sessionId,
           message: userText,
@@ -122,64 +178,24 @@ export function useChatbot() {
 
         setMessages((prev) => [...prev, botMsg]);
       } catch {
-        // Fallback 1: Direct Google Gemini AI (if key is configured in .env)
-        let processedByGemini = false;
-        if (geminiService.hasApiKey()) {
-          try {
-            const geminiResult = await geminiService.generateGrievanceTriage(updatedMessages);
-            if (geminiResult) {
-              setSessionId((prev) => prev ?? `gemini-session-${Date.now()}`);
-              setSessionState({
-                category: geminiResult.category,
-                subcategory: geminiResult.subcategory ?? null,
-                collectedFields: ['category', 'location', 'description'],
-                pendingFields: geminiResult.complete ? [] : ['location'],
-                complete: geminiResult.complete,
-                draftIssue: geminiResult.draft,
-              });
+        const simulated = simulateBotResponse(userText, sessionStateRef.current, updatedMessages);
 
-              const botMsg: ChatMessage = {
-                id: `bot-${Date.now()}`,
-                role: 'assistant',
-                content: geminiResult.replyText,
-                timestamp: new Date().toISOString(),
-              };
+        logger.log('CHATBOT', `Simulator Bot: "${simulated.replyText}"`, {
+          complete: simulated.nextState.complete,
+          category: simulated.nextState.category,
+        });
 
-              setMessages((prev) => [...prev, botMsg]);
-              processedByGemini = true;
-            }
-          } catch (geminiErr: unknown) {
-            logger.warn(
-              'CHATBOT',
-              'Direct Gemini call failed; falling back to simulator',
-              geminiErr,
-            );
-          }
-        }
+        setSessionId((prev) => prev ?? `demo-session-${Date.now()}`);
+        setSessionState(simulated.nextState);
 
-        // Fallback 2: Intelligent local state machine for offline phone testing
-        if (!processedByGemini) {
-          await new Promise((res) => setTimeout(res, 600)); // realistic typing delay
+        const botMsg: ChatMessage = {
+          id: `bot-${Date.now()}`,
+          role: 'assistant',
+          content: simulated.replyText,
+          timestamp: new Date().toISOString(),
+        };
 
-          const simulated = simulateBotResponse(userText, sessionStateRef.current, updatedMessages);
-
-          logger.log('CHATBOT', `Simulator Bot: "${simulated.replyText}"`, {
-            complete: simulated.nextState.complete,
-            category: simulated.nextState.category,
-          });
-
-          setSessionId((prev) => prev ?? `demo-session-${Date.now()}`);
-          setSessionState(simulated.nextState);
-
-          const botMsg: ChatMessage = {
-            id: `bot-${Date.now()}`,
-            role: 'assistant',
-            content: simulated.replyText,
-            timestamp: new Date().toISOString(),
-          };
-
-          setMessages((prev) => [...prev, botMsg]);
-        }
+        setMessages((prev) => [...prev, botMsg]);
       } finally {
         setIsTyping(false);
       }

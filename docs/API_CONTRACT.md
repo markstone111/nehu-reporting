@@ -15,49 +15,50 @@ Local dev (Go server): `http://localhost:8080/v1`
 ## Master Bidirectional Data Flow Matrix
 
 This master overview summarizes:
+
 1. **What the Mobile App Sends to the Backend** (Payloads, Query Params, Headers, Constraints)
 2. **What the Backend Returns to the Mobile App** (Response Objects, Tokens, Status Codes)
 3. **What the Backend Dispatches via Remote Push (FCM HTTP v1)** (Trigger Events & Deep Link Data Payloads)
 
 ### 1. App → Backend: All Payloads Sent by the Mobile Client
 
-| Endpoint | Method | Purpose | What App Sends (Payload / Params) | Constraints / Formats |
-| :--- | :--- | :--- | :--- | :--- |
-| `/auth/register` | `POST` | Account creation | `{ name, email, password, role, idCardImageBase64, fcmToken }` | `role`: `'student'\|'staff'\|'faculty'`. Image up to 5MB Base64. `fcmToken` nullable. |
-| `/auth/login` | `POST` | User authentication | `{ email, password, fcmToken }` | Valid university email. `fcmToken` nullable. |
-| `/auth/refresh` | `POST` | Token rotation | `{ refreshToken }` | JWT refresh token string. |
-| `/auth/logout` | `POST` | Invalidate session | `Headers: { Authorization: "Bearer <token>" }` | Invalidates refresh token on server. |
-| `/auth/fcm-token` | `PATCH` | Register active device push token | `{ fcmToken, platform, deviceModel?, appVersion? }` | `platform`: `'android'\|'ios'`. Upserts token in `user_fcm_tokens`. |
-| `/auth/fcm-token` | `DELETE` | De-register token on logout | `{ fcmToken }` | Deactivates token so logged-out users don't receive alerts. |
-| `/issues` | `POST` | File grievance (Form or AI Chatbot) | `{ title, description, category, subcategory, location: { label, latitude, longitude, autoFetched }, attachments, source: "FORM"\|"CHATBOT", metadata }` | Title 5–100 chars, description 5–300 words. Location label max 200 chars. |
-| `/issues` | `GET` | Fetch user's grievance list | `Query: ?page=1&pageSize=20&status=IN_PROGRESS` | Paginated. `status` filter optional. |
-| `/issues/:id` | `GET` | Fetch grievance details & timeline | `URL param: :id` (UUID) | Returns grievance data with complete chronological `timeline: [...]`. |
-| `/chatbot/message` | `POST` | Conversational triage turn | Turn 1: `{ sessionId: null, message, sessionState: null }`<br>Follow-up: `{ sessionId, message, sessionState }` | Message 1–500 chars. Maintains state machine for category/location/description. |
-| `/chatbot/:sessionId` | `DELETE` | Cancel conversational draft session | `URL param: :sessionId` (UUID) | Best-effort session cleanup. |
-| `/notifications` | `GET` | In-app notification center | `Query: ?page=1&pageSize=20&filter=ALL\|GRIEVANCES\|ADMINISTRATIVE` | Paginated user notification history. |
-| `/notifications/unread-count` | `GET` | Notification badge count | None | Lightweight count of unread items for tab bar & header badges. |
-| `/notifications/:id/read` | `PATCH` | Mark notification as read | `URL param: :id` (UUID) | Updates `is_read = true` and `read_at = NOW()`. |
-| `/notifications/read-all` | `PATCH` | Mark all notifications read | None | Marks all unread notifications for current user as read. |
-| `/notifications/:id` | `DELETE` | Dismiss notification item | `URL param: :id` (UUID) | Soft-deletes or removes notification from user's view. |
+| Endpoint                      | Method   | Purpose                             | What App Sends (Payload / Params)                                                                                                                        | Constraints / Formats                                                                 |
+| :---------------------------- | :------- | :---------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------ |
+| `/auth/register`              | `POST`   | Account creation                    | `{ name, email, password, role, idCardImageBase64, fcmToken }`                                                                                           | `role`: `'student'\|'staff'\|'faculty'`. Image up to 5MB Base64. `fcmToken` nullable. |
+| `/auth/login`                 | `POST`   | User authentication                 | `{ email, password, fcmToken }`                                                                                                                          | Valid university email. `fcmToken` nullable.                                          |
+| `/auth/refresh`               | `POST`   | Token rotation                      | `{ refreshToken }`                                                                                                                                       | JWT refresh token string.                                                             |
+| `/auth/logout`                | `POST`   | Invalidate session                  | `Headers: { Authorization: "Bearer <token>" }`                                                                                                           | Invalidates refresh token on server.                                                  |
+| `/auth/fcm-token`             | `PATCH`  | Register active device push token   | `{ fcmToken, platform, deviceModel?, appVersion? }`                                                                                                      | `platform`: `'android'\|'ios'`. Upserts token in `user_fcm_tokens`.                   |
+| `/auth/fcm-token`             | `DELETE` | De-register token on logout         | `{ fcmToken }`                                                                                                                                           | Deactivates token so logged-out users don't receive alerts.                           |
+| `/issues`                     | `POST`   | File grievance (Form or AI Chatbot) | `{ title, description, category, subcategory, location: { label, latitude, longitude, autoFetched }, attachments, source: "FORM"\|"CHATBOT", metadata }` | Title 5–100 chars, description 5–300 words. Location label max 200 chars.             |
+| `/issues`                     | `GET`    | Fetch user's grievance list         | `Query: ?page=1&pageSize=20&status=IN_PROGRESS`                                                                                                          | Paginated. `status` filter optional.                                                  |
+| `/issues/:id`                 | `GET`    | Fetch grievance details & timeline  | `URL param: :id` (UUID)                                                                                                                                  | Returns grievance data with complete chronological `timeline: [...]`.                 |
+| `/chatbot/message`            | `POST`   | Conversational triage turn          | Turn 1: `{ sessionId: null, message, sessionState: null }`<br>Follow-up: `{ sessionId, message, sessionState }`                                          | Message 1–500 chars. Maintains state machine for category/location/description.       |
+| `/chatbot/:sessionId`         | `DELETE` | Cancel conversational draft session | `URL param: :sessionId` (UUID)                                                                                                                           | Best-effort session cleanup.                                                          |
+| `/notifications`              | `GET`    | In-app notification center          | `Query: ?page=1&pageSize=20&filter=ALL\|GRIEVANCES\|ADMINISTRATIVE`                                                                                      | Paginated user notification history.                                                  |
+| `/notifications/unread-count` | `GET`    | Notification badge count            | None                                                                                                                                                     | Lightweight count of unread items for tab bar & header badges.                        |
+| `/notifications/:id/read`     | `PATCH`  | Mark notification as read           | `URL param: :id` (UUID)                                                                                                                                  | Updates `is_read = true` and `read_at = NOW()`.                                       |
+| `/notifications/read-all`     | `PATCH`  | Mark all notifications read         | None                                                                                                                                                     | Marks all unread notifications for current user as read.                              |
+| `/notifications/:id`          | `DELETE` | Dismiss notification item           | `URL param: :id` (UUID)                                                                                                                                  | Soft-deletes or removes notification from user's view.                                |
 
 ---
 
 ### 2. Backend → App: All Responses Expected by the Mobile Client
 
-| Endpoint | Status | What Backend Returns to App | Mobile App UI Impact |
-| :--- | :--- | :--- | :--- |
-| `/auth/register` & `/auth/login` | `201` / `200` | `{ tokens: { accessToken, refreshToken, expiresIn }, user: { id, name, email, role, avatarUrl, createdAt } }` | Encrypts JWT in `SecureStorage`, stores user profile in Zustand, navigates to `/(app)` dashboard. |
-| `/auth/refresh` | `200` | `{ accessToken, refreshToken, expiresIn }` | Silently intercepted on 401: stores new tokens, retries original failed request seamlessly. |
-| `/auth/logout` | `204` | Empty body | Clears SecureStorage tokens and Zustand auth store, redirects to `/(auth)/login`. |
-| `/auth/fcm-token` (`PATCH`/`DELETE`) | `204` | Empty body | Confirms device token registered / deactivated in database. |
-| `/issues` (`POST`) | `201` | `{ issueId, status, isDuplicate, linkedIssueId, message }` | Shows toast banner with `message`. If `isDuplicate: true`, alerts user that report was linked to existing parent ticket. |
-| `/issues` (`GET`) | `200` | `{ data: [{ id, title, status, category, subcategory, createdAt, updatedAt, isDuplicate, linkedCount }], total, page, pageSize, hasNextPage }` | Populates My Issues list and dashboard metrics with status chips and category badges. |
-| `/issues/:id` (`GET`) | `200` | `{ id, title, description, status, category, subcategory, location, source, isDuplicate, linkedIssueId, linkedCount, assignedTo, createdAt, updatedAt, timeline: [{ id, event, message, timestamp, actor, actorName }], attachments }` | Renders full grievance details, GPS location label, and interactive step-by-step Resolution Timeline. |
-| `/chatbot/message` (`POST`) | `200` | `{ sessionId, botMessage, sessionState: { category, subcategory, collectedFields, pendingFields, complete, draftIssue } }` | Renders assistant chat bubble with bouncing indicator. When `complete: true`, displays Canva-style interactive Draft Review Card. |
-| `/notifications` (`GET`) | `200` | `{ data: [{ id, category, type, status, title, message, timestamp, isRead, issueId, icon, badgeVariant }], total, page, pageSize, hasNextPage, unreadCount }` | Renders Alerts list with unread blue dots, category filters, and tap-to-navigate action. |
-| `/notifications/unread-count` (`GET`) | `200` | `{ unreadCount: number }` | Controls red badge counter on the bottom `Alerts` tab bar icon. |
-| `/notifications/:id/read` (`PATCH`) | `200` | `{ id, isRead: true, readAt: string }` | Clears unread indicator for that item, decrements badge count. |
-| `/notifications/read-all` (`PATCH`) | `200` | `{ markedCount: number, message: string }` | Clears all unread dots and resets tab badge to 0. |
+| Endpoint                              | Status        | What Backend Returns to App                                                                                                                                                                                                            | Mobile App UI Impact                                                                                                              |
+| :------------------------------------ | :------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------- |
+| `/auth/register` & `/auth/login`      | `201` / `200` | `{ tokens: { accessToken, refreshToken, expiresIn }, user: { id, name, email, role, avatarUrl, createdAt } }`                                                                                                                          | Encrypts JWT in `SecureStorage`, stores user profile in Zustand, navigates to `/(app)` dashboard.                                 |
+| `/auth/refresh`                       | `200`         | `{ accessToken, refreshToken, expiresIn }`                                                                                                                                                                                             | Silently intercepted on 401: stores new tokens, retries original failed request seamlessly.                                       |
+| `/auth/logout`                        | `204`         | Empty body                                                                                                                                                                                                                             | Clears SecureStorage tokens and Zustand auth store, redirects to `/(auth)/login`.                                                 |
+| `/auth/fcm-token` (`PATCH`/`DELETE`)  | `204`         | Empty body                                                                                                                                                                                                                             | Confirms device token registered / deactivated in database.                                                                       |
+| `/issues` (`POST`)                    | `201`         | `{ issueId, status, isDuplicate, linkedIssueId, message }`                                                                                                                                                                             | Shows toast banner with `message`. If `isDuplicate: true`, alerts user that report was linked to existing parent ticket.          |
+| `/issues` (`GET`)                     | `200`         | `{ data: [{ id, title, status, category, subcategory, createdAt, updatedAt, isDuplicate, linkedCount }], total, page, pageSize, hasNextPage }`                                                                                         | Populates My Issues list and dashboard metrics with status chips and category badges.                                             |
+| `/issues/:id` (`GET`)                 | `200`         | `{ id, title, description, status, category, subcategory, location, source, isDuplicate, linkedIssueId, linkedCount, assignedTo, createdAt, updatedAt, timeline: [{ id, event, message, timestamp, actor, actorName }], attachments }` | Renders full grievance details, GPS location label, and interactive step-by-step Resolution Timeline.                             |
+| `/chatbot/message` (`POST`)           | `200`         | `{ sessionId, botMessage, sessionState: { category, subcategory, collectedFields, pendingFields, complete, draftIssue } }`                                                                                                             | Renders assistant chat bubble with bouncing indicator. When `complete: true`, displays Canva-style interactive Draft Review Card. |
+| `/notifications` (`GET`)              | `200`         | `{ data: [{ id, category, type, status, title, message, timestamp, isRead, issueId, icon, badgeVariant }], total, page, pageSize, hasNextPage, unreadCount }`                                                                          | Renders Alerts list with unread blue dots, category filters, and tap-to-navigate action.                                          |
+| `/notifications/unread-count` (`GET`) | `200`         | `{ unreadCount: number }`                                                                                                                                                                                                              | Controls red badge counter on the bottom `Alerts` tab bar icon.                                                                   |
+| `/notifications/:id/read` (`PATCH`)   | `200`         | `{ id, isRead: true, readAt: string }`                                                                                                                                                                                                 | Clears unread indicator for that item, decrements badge count.                                                                    |
+| `/notifications/read-all` (`PATCH`)   | `200`         | `{ markedCount: number, message: string }`                                                                                                                                                                                             | Clears all unread dots and resets tab badge to 0.                                                                                 |
 
 ---
 
@@ -93,8 +94,8 @@ When grievance lifecycle events occur, the backend dispatches an **FCM HTTP v1 m
 }
 ```
 
-* **Foreground:** Triggers `<NotificationToast />` slide-down banner inside the app and invalidates TanStack Query caches in real-time.
-* **Background / Killed:** Native Android system notification with NEHU blue branding; tapping it deep-links directly to `/(app)/issues/:id`.
+- **Foreground:** Triggers `<NotificationToast />` slide-down banner inside the app and invalidates TanStack Query caches in real-time.
+- **Background / Killed:** Native Android system notification with NEHU blue branding; tapping it deep-links directly to `/(app)/issues/:id`.
 
 ---
 

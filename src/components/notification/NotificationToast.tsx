@@ -8,14 +8,7 @@
  */
 
 import { useEffect, useRef, useCallback } from 'react';
-import {
-  Text,
-  View,
-  StyleSheet,
-  Pressable,
-  Animated,
-  Platform,
-} from 'react-native';
+import { Text, View, StyleSheet, Pressable, Animated, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS, SHADOWS } from '@/constants/theme';
@@ -43,8 +36,15 @@ export function NotificationToast({
   const translateY = useRef(new Animated.Value(-120)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+  const wasVisibleRef = useRef(false);
 
   const handleDismiss = useCallback(() => {
+    if (dismissTimer.current) {
+      clearTimeout(dismissTimer.current);
+      dismissTimer.current = null;
+    }
     Animated.parallel([
       Animated.timing(translateY, {
         toValue: -120,
@@ -57,12 +57,13 @@ export function NotificationToast({
         useNativeDriver: true,
       }),
     ]).start(() => {
-      onDismiss();
+      onDismissRef.current();
     });
-  }, [opacity, translateY, onDismiss]);
+  }, [opacity, translateY]);
 
   useEffect(() => {
     if (visible) {
+      wasVisibleRef.current = true;
       // Clear any pending timeout
       if (dismissTimer.current) clearTimeout(dismissTimer.current);
 
@@ -85,8 +86,10 @@ export function NotificationToast({
       dismissTimer.current = setTimeout(() => {
         handleDismiss();
       }, durationMs);
-    } else {
-      handleDismiss();
+    } else if (wasVisibleRef.current) {
+      wasVisibleRef.current = false;
+      translateY.setValue(-120);
+      opacity.setValue(0);
     }
 
     return () => {

@@ -42,6 +42,7 @@ import {
   validateIssueLocation,
 } from '@/utils/validation.utils';
 import { countWords, capitalize } from '@/utils/text.utils';
+import { getErrorMessage } from '@/utils/error.utils';
 import { LIMITS } from '@/constants/limits';
 import type { CategoryId } from '@/constants/categories';
 import type { IssueLocation, SubmitIssueRequest } from '@/types/api.types';
@@ -199,10 +200,10 @@ export default function ReportFormScreen() {
         );
       }
     } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Unable to submit grievance. Please verify your connection.';
+      const message = getErrorMessage(
+        err,
+        'Unable to submit grievance. Please verify your connection.',
+      );
       Alert.alert('Submission Error', message);
     }
   };

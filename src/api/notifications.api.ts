@@ -26,9 +26,7 @@ export const notificationsApi = {
   /**
    * Fetch paginated notifications with optional filter (ALL, GRIEVANCES, ADMINISTRATIVE).
    */
-  getNotifications: async (
-    params?: GetNotificationsRequest,
-  ): Promise<GetNotificationsResponse> => {
+  getNotifications: async (params?: GetNotificationsRequest): Promise<GetNotificationsResponse> => {
     const response = await apiClient.get<GetNotificationsResponse>('/notifications', {
       params,
     });
@@ -39,8 +37,12 @@ export const notificationsApi = {
    * Fetch unread notification count for badge rendering.
    */
   getUnreadCount: async (): Promise<UnreadCountResponse> => {
-    const response = await apiClient.get<UnreadCountResponse>('/notifications/unread-count');
-    return response.data;
+    try {
+      const response = await apiClient.get<UnreadCountResponse>('/notifications/unread-count');
+      return response.data;
+    } catch {
+      return { unreadCount: 0 };
+    }
   },
 
   /**

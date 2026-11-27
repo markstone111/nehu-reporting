@@ -58,16 +58,16 @@ To keep students, faculty, and administrative staff informed about their reporte
 
 ## 2. Required Endpoints Summary
 
-| Method | Endpoint | Auth | Purpose |
-| :--- | :--- | :--- | :--- |
-| `PATCH` | `/auth/fcm-token` | Required | Register or update the device's FCM push token |
-| `DELETE` | `/auth/fcm-token` | Required | Remove/deactivate FCM token on user logout |
-| `GET` | `/notifications` | Required | Fetch paginated notification history for user |
-| `GET` | `/notifications/unread-count` | Required | Lightweight count of unread notifications |
-| `PATCH` | `/notifications/:id/read` | Required | Mark a single notification as read |
-| `PATCH` | `/notifications/read-all` | Required | Mark all user notifications as read |
-| `DELETE` | `/notifications/:id` | Required | Delete/dismiss a single notification |
-| `POST` | `/dev/test-notification` | Required *(Dev only)* | Trigger a mock push notification for testing |
+| Method   | Endpoint                      | Auth                  | Purpose                                        |
+| :------- | :---------------------------- | :-------------------- | :--------------------------------------------- |
+| `PATCH`  | `/auth/fcm-token`             | Required              | Register or update the device's FCM push token |
+| `DELETE` | `/auth/fcm-token`             | Required              | Remove/deactivate FCM token on user logout     |
+| `GET`    | `/notifications`              | Required              | Fetch paginated notification history for user  |
+| `GET`    | `/notifications/unread-count` | Required              | Lightweight count of unread notifications      |
+| `PATCH`  | `/notifications/:id/read`     | Required              | Mark a single notification as read             |
+| `PATCH`  | `/notifications/read-all`     | Required              | Mark all user notifications as read            |
+| `DELETE` | `/notifications/:id`          | Required              | Delete/dismiss a single notification           |
+| `POST`   | `/dev/test-notification`      | Required _(Dev only)_ | Trigger a mock push notification for testing   |
 
 ---
 
@@ -75,13 +75,16 @@ To keep students, faculty, and administrative staff informed about their reporte
 
 ### 3.1 Device Token Registration
 
-#### `PATCH /auth/fcm-token` *(Protected)*
+#### `PATCH /auth/fcm-token` _(Protected)_
+
 Called by the mobile app whenever:
+
 - A user logs in or completes registration.
 - Firebase rotates the FCM registration token.
 - The app initializes on device restart.
 
 **Request Body:**
+
 ```json
 {
   "fcmToken": "eK5_...your_native_firebase_fcm_registration_token...",
@@ -92,12 +95,14 @@ Called by the mobile app whenever:
 ```
 
 **Fields:**
+
 - `fcmToken` (string, required): The native FCM registration token issued by Firebase.
 - `platform` (string, required): `"android"` | `"ios"` | `"web"`.
 - `deviceModel` (string, optional): E.g., `"Samsung Galaxy S23"`.
 - `appVersion` (string, optional): E.g., `"1.0.0"`.
 
 **Backend Logic:**
+
 - Upsert into `user_fcm_tokens`. If the token already exists for another user (e.g. phone handed over to friend), update `user_id` to current user.
 - Set `is_active = TRUE`, `updated_at = NOW()`.
 
@@ -105,10 +110,12 @@ Called by the mobile app whenever:
 
 ---
 
-#### `DELETE /auth/fcm-token` *(Protected)*
+#### `DELETE /auth/fcm-token` _(Protected)_
+
 Called immediately before the user logs out so that future notifications for this account are not sent to this device.
 
 **Request Body:**
+
 ```json
 {
   "fcmToken": "eK5_...your_native_firebase_fcm_registration_token..."
@@ -116,6 +123,7 @@ Called immediately before the user logs out so that future notifications for thi
 ```
 
 **Backend Logic:**
+
 - Update `user_fcm_tokens` set `is_active = FALSE` where `fcm_token = :fcmToken AND user_id = :currentUserId`.
 
 **Response `204 No Content`**
@@ -124,15 +132,18 @@ Called immediately before the user logs out so that future notifications for thi
 
 ### 3.2 In-App Notification Center Endpoints
 
-#### `GET /notifications` *(Protected)*
+#### `GET /notifications` _(Protected)_
+
 Retrieves paginated notifications for the authenticated user, matching the UI tabs in `app/(app)/notifications.tsx`.
 
 **Query Parameters:**
+
 - `page` (integer, optional, default: `1`): Current page.
 - `pageSize` (integer, optional, default: `20`, max: `50`): Items per page.
 - `filter` (string, optional, default: `ALL`): `"ALL"` | `"GRIEVANCES"` | `"ADMINISTRATIVE"`.
 
 **Response `200 OK`:**
+
 ```json
 {
   "data": [
@@ -173,10 +184,12 @@ Retrieves paginated notifications for the authenticated user, matching the UI ta
 
 ---
 
-#### `GET /notifications/unread-count` *(Protected)*
+#### `GET /notifications/unread-count` _(Protected)_
+
 Lightweight endpoint called on app resume to display the red badge on the notification bell in the app header.
 
 **Response `200 OK`:**
+
 ```json
 {
   "unreadCount": 3
@@ -185,10 +198,12 @@ Lightweight endpoint called on app resume to display the red badge on the notifi
 
 ---
 
-#### `PATCH /notifications/:id/read` *(Protected)*
+#### `PATCH /notifications/:id/read` _(Protected)_
+
 Marks a single notification as read when the user taps on it.
 
 **Response `200 OK`:**
+
 ```json
 {
   "id": "e3b0c442-98fc-1c14-9afe-4b204b901a01",
@@ -199,10 +214,12 @@ Marks a single notification as read when the user taps on it.
 
 ---
 
-#### `PATCH /notifications/read-all` *(Protected)*
+#### `PATCH /notifications/read-all` _(Protected)_
+
 Marks all unread notifications belonging to the user as read (triggered by "Mark all as read" button in UI).
 
 **Response `200 OK`:**
+
 ```json
 {
   "markedCount": 4,
@@ -212,17 +229,20 @@ Marks all unread notifications belonging to the user as read (triggered by "Mark
 
 ---
 
-#### `DELETE /notifications/:id` *(Protected)*
+#### `DELETE /notifications/:id` _(Protected)_
+
 Dismisses or soft-deletes a notification item from user's list.
 
 **Response `204 No Content`**
 
 ---
 
-#### `POST /dev/test-notification` *(Protected - Dev / Staging only)*
+#### `POST /dev/test-notification` _(Protected - Dev / Staging only)_
+
 Allows testing the FCM push delivery directly from Postman or Developer Settings.
 
 **Request Body:**
+
 ```json
 {
   "title": "Test Push Notification",
@@ -233,6 +253,7 @@ Allows testing the FCM push delivery directly from Postman or Developer Settings
 ```
 
 **Response `200 OK`:**
+
 ```json
 {
   "success": true,
@@ -280,12 +301,13 @@ When sending push notifications through the Google Firebase Cloud Messaging HTTP
 ```
 
 ### Critical Rules for the Payload:
+
 1. **Values inside `data` must all be Strings:** Firebase FCM HTTP v1 requires all values inside the `data` key-value object to be strings (e.g. `"status": "IN_PROGRESS"`, NOT nested objects or booleans).
 2. **`issueId` is required for Grievance events:** The mobile app's deep link handler uses `data.issueId` (or `data.url`) to navigate straight to the grievance detail screen when the user taps the notification.
 3. **Android Notification Channel:**
    - Grievance updates must use `channel_id: "nehu_grievance_updates"`.
    - General campus announcements must use `channel_id: "nehu_campus_advisories"`.
-   The mobile app registers these notification channels on boot.
+     The mobile app registers these notification channels on boot.
 
 ---
 
@@ -293,17 +315,17 @@ When sending push notifications through the Google Firebase Cloud Messaging HTTP
 
 The backend should automatically trigger push notifications on the following events:
 
-| Trigger Event | Target User | Title Format | Body Format | FCM `data.type` |
-| :--- | :--- | :--- | :--- | :--- |
-| **Grievance Submitted** | Reporter | Grievance Registered | Grievance #{shortId} submitted successfully. | `SUBMITTED` |
-| **Under Review** | Reporter | Grievance Under Review | Administration is reviewing #{shortId}. | `UNDER_REVIEW` |
-| **Assigned to Dept** | Reporter | Grievance Assigned | #{shortId} assigned to {departmentName}. | `ASSIGNED` |
-| **Work in Progress** | Reporter | Resolution In Progress | Technician dispatched for #{shortId}. | `IN_PROGRESS` |
-| **Resolved** | Reporter | Grievance Resolved | #{shortId} marked resolved. Please provide feedback. | `RESOLVED` |
-| **Escalated** | Reporter | Grievance Escalated | #{shortId} escalated to higher campus authority. | `ESCALATED` |
-| **Admin Comment** | Reporter | New Update on Grievance | Officer remarks added to #{shortId}. | `COMMENT` |
-| **Duplicate Linked** | Reporter | Report Linked to Existing Issue | Your report linked to existing #{parentShortId}. | `DUPLICATE_LINK` |
-| **Campus Advisory** | All Students/Staff | Campus Announcement | {advisorySummary} | `NOTICE` |
+| Trigger Event           | Target User        | Title Format                    | Body Format                                          | FCM `data.type`  |
+| :---------------------- | :----------------- | :------------------------------ | :--------------------------------------------------- | :--------------- |
+| **Grievance Submitted** | Reporter           | Grievance Registered            | Grievance #{shortId} submitted successfully.         | `SUBMITTED`      |
+| **Under Review**        | Reporter           | Grievance Under Review          | Administration is reviewing #{shortId}.              | `UNDER_REVIEW`   |
+| **Assigned to Dept**    | Reporter           | Grievance Assigned              | #{shortId} assigned to {departmentName}.             | `ASSIGNED`       |
+| **Work in Progress**    | Reporter           | Resolution In Progress          | Technician dispatched for #{shortId}.                | `IN_PROGRESS`    |
+| **Resolved**            | Reporter           | Grievance Resolved              | #{shortId} marked resolved. Please provide feedback. | `RESOLVED`       |
+| **Escalated**           | Reporter           | Grievance Escalated             | #{shortId} escalated to higher campus authority.     | `ESCALATED`      |
+| **Admin Comment**       | Reporter           | New Update on Grievance         | Officer remarks added to #{shortId}.                 | `COMMENT`        |
+| **Duplicate Linked**    | Reporter           | Report Linked to Existing Issue | Your report linked to existing #{parentShortId}.     | `DUPLICATE_LINK` |
+| **Campus Advisory**     | All Students/Staff | Campus Announcement             | {advisorySummary}                                    | `NOTICE`         |
 
 ---
 
@@ -466,7 +488,7 @@ firebase_admin.initialize_app(cred)
 def send_push_notification(tokens: list[str], title: str, body: str, issue_id: str, status: str, notification_id: str):
     if not tokens:
         return
-        
+
     message = messaging.MulticastMessage(
         tokens=tokens,
         notification=messaging.Notification(
@@ -490,7 +512,7 @@ def send_push_notification(tokens: list[str], title: str, body: str, issue_id: s
             )
         )
     )
-    
+
     response = messaging.send_each_for_multicast(message)
     print(f"{response.success_count} messages sent successfully, {response.failure_count} failed.")
 ```
@@ -506,4 +528,3 @@ def send_push_notification(tokens: list[str], title: str, body: str, issue_id: s
 - [ ] Set up Firebase Project Service Account Key (`serviceAccountKey.json`) on backend.
 - [ ] Attach `SendIssueStatusNotification` hook to grievance status update triggers.
 - [ ] Handle unregistering invalid tokens when FCM returns `registration-token-not-registered`.
-

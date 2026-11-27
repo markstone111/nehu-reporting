@@ -12,7 +12,11 @@
  *   PATCH /auth/fcm-token — Update FCM token on the server
  */
 
+import { Platform } from 'react-native';
 import { apiClient } from '@/api/client';
+import { useAuthStore } from '@/store/auth.store';
+import { SecureStorage, STORAGE_KEYS } from '@/services/storage.service';
+import { logger } from '@/utils/logger.utils';
 import type {
   RegisterRequest,
   LoginRequest,
@@ -22,65 +26,264 @@ import type {
   DeleteFcmTokenRequest,
 } from '@/types/api.types';
 
+export interface OcrExtractedFields {
+  name?: string;
+  id_number?: string;
+  department?: string;
+  programme?: string;
+  year_of_admission?: string;
+  valid_upto?: string;
+}
+
+/**
+ * Scan ID card image with Cloud Run PP-OCRv6 microservice
+ * Uses native XMLHttpRequest to bypass JS fetch/FormData quirks on Android and iOS,
+ * directly invoking React Native's native streaming networking module with 45s cold-start timeout.
+ */
+export async function scanIdCardWithOcr(imageUri: string): Promise<OcrExtractedFields | null> {
+  const ocrUrl =
+    process.env.EXPO_PUBLIC_OCR_URL ||
+    'https://kasunwai-ocr-294086420184.asia-southeast1.run.app/api/ocr';
+
+  let normalizedUri = imageUri;
+  if (Platform.OS === 'android' && !normalizedUri.startsWith('file://') && !normalizedUri.startsWith('content://')) {
+    normalizedUri = `file://${normalizedUri}`;
+  }
+
+  return new Promise(async (resolve) => {
+    try {
+      const formData = new FormData();
+
+      if (Platform.OS === 'web') {
+        try {
+          const res = await fetch(imageUri);
+          const blob = await res.blob();
+          formData.append('file', blob, 'id_card.jpg');
+        } catch {
+          formData.append('file', {
+            uri: normalizedUri,
+            name: 'id_card.jpg',
+            type: 'image/jpeg',
+          } as any);
+        }
+      } else {
+        // Native Android & iOS: Native NetworkingModule streams local file directly via ContentResolver
+        formData.append('file', {
+          uri: normalizedUri,
+          name: 'id_card.jpg',
+          type: 'image/jpeg',
+        } as any);
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', ocrUrl);
+      xhr.timeout = 45000; // 45 seconds to accommodate Cloud Run cold starts
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            const results = data?.results || data?.extracted_data || null;
+            resolve(results);
+          } catch (err) {
+            console.warn('[OCR] JSON parse error:', err);
+            resolve(null);
+          }
+        } else {
+          console.warn(`[OCR] HTTP error ${xhr.status}: ${xhr.responseText}`);
+          resolve(null);
+        }
+      };
+
+      xhr.onerror = (e) => {
+        console.warn('[OCR] XMLHttpRequest network error:', e);
+        resolve(null);
+      };
+
+      xhr.ontimeout = () => {
+        console.warn('[OCR] Cloud Run request timed out (45s)');
+        resolve(null);
+      };
+
+      xhr.send(formData);
+    } catch (err) {
+      console.warn('[OCR] Failed to send XHR:', err);
+      resolve(null);
+    }
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Auth API Functions
 // ---------------------------------------------------------------------------
 
-/**
- * Register a new user account.
- *
- * The idCardImageBase64 is a Base64-encoded JPEG/PNG of the student's ID card.
- * This is a one-time upload — users cannot change it later (by design decision).
- *
- * Note: This is a large payload due to the base64 image.
- * The backend should accept up to 5MB for this field.
- */
 export const authApi = {
   register: async (data: RegisterRequest): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/auth/register', data, {
+    const payload = {
+      roll_number:
+        data.roll_number ||
+        (data as any).id_number ||
+        `STU-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+      full_name: data.full_name || data.name,
+      department: data.department || 'General',
+      email: data.email,
+      password: data.password,
+    };
+
+    const response = await apiClient.post<any>('/users', payload, {
       _isPublic: true,
     } as object);
-    return response.data;
+    const createdUser = response.data?.data || response.data;
+
+    // Immediately log in to obtain session token
+    let token = 'session-token';
+    try {
+      const loginRes = await apiClient.post<any>(
+        '/users/login',
+        {
+          email: data.email,
+          password: data.password,
+        },
+        { _isPublic: true } as object,
+      );
+      const loginData = loginRes.data?.data || loginRes.data;
+      if (loginData?.token) {
+        token = loginData.token;
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+
+    // Register FCM token if provided
+    if (data.fcmToken) {
+      try {
+        await apiClient.post('/notifications/token', {
+          user_id: createdUser?.id,
+          fcm_token: data.fcmToken,
+          device_type: 'android',
+        });
+      } catch {
+        // FCM token non-critical
+      }
+    }
+
+    return {
+      tokens: {
+        accessToken: token,
+        refreshToken: token,
+        expiresIn: 86400 * 30,
+      },
+      user: {
+        id: createdUser?.id,
+        name: createdUser?.full_name || data.name,
+        full_name: createdUser?.full_name || data.name,
+        roll_number: createdUser?.roll_number || payload.roll_number,
+        department: createdUser?.department || payload.department,
+        email: data.email,
+        role: data.role || 'student',
+        avatarUrl: null,
+        createdAt: new Date().toISOString(),
+      },
+    };
   },
 
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/auth/login', data, {
-      _isPublic: true,
-    } as object);
-    return response.data;
+    const response = await apiClient.post<any>(
+      '/users/login',
+      {
+        email: data.email,
+        password: data.password,
+      },
+      {
+        _isPublic: true,
+      } as object,
+    );
+
+    const resData = response.data?.data || response.data;
+    const token = resData?.token || 'session-token';
+    const user = resData?.user;
+
+    // Register FCM token if provided
+    if (data.fcmToken && user?.id) {
+      try {
+        await apiClient.post('/notifications/token', {
+          user_id: user.id,
+          fcm_token: data.fcmToken,
+          device_type: 'android',
+        });
+      } catch {
+        // FCM token non-critical
+      }
+    }
+
+    return {
+      tokens: {
+        accessToken: token,
+        refreshToken: token,
+        expiresIn: 86400 * 30,
+      },
+      user: {
+        id: user?.id,
+        name: user?.full_name || 'Student',
+        full_name: user?.full_name,
+        roll_number: user?.roll_number,
+        department: user?.department,
+        email: user?.email || data.email,
+        role: 'student',
+        avatarUrl: null,
+        createdAt: user?.created_at || new Date().toISOString(),
+      },
+    };
   },
 
-  /**
-   * Called automatically by the API client interceptor on 401.
-   * You should not need to call this directly from the UI.
-   */
   refresh: async (refreshToken: string): Promise<AuthTokens> => {
-    const response = await apiClient.post<AuthTokens>('/auth/refresh', { refreshToken }, {
-      _isPublic: true,
-    } as object);
-    return response.data;
+    return {
+      accessToken: refreshToken,
+      refreshToken: refreshToken,
+      expiresIn: 86400 * 30,
+    };
   },
 
-  /**
-   * Invalidate the refresh token on the server side.
-   * Always call this on logout — even if it fails, clear local storage.
-   */
   logout: async (): Promise<void> => {
-    await apiClient.post('/auth/logout');
+    try {
+      await apiClient.post('/notifications/logout');
+    } catch {
+      // Non-blocking logout cleanup
+    }
   },
 
-  /**
-   * Update the device's FCM token on the server.
-   * Called when a new FCM token is generated (app start, token refresh).
-   */
   updateFcmToken: async (data: UpdateFcmTokenRequest): Promise<void> => {
-    await apiClient.patch('/auth/fcm-token', data);
+    let userId = useAuthStore.getState().user?.id;
+    if (!userId) {
+      try {
+        const token = await SecureStorage.get(STORAGE_KEYS.ACCESS_TOKEN);
+        if (token && token.includes('.')) {
+          const raw = token.split('.')[0];
+          const decoded = atob(raw.replace(/-/g, '+').replace(/_/g, '/'));
+          const parts = decoded.split(':');
+          if (parts.length >= 2) {
+            userId = parts[0];
+          }
+        }
+      } catch {
+        // Non-blocking retrieval failure
+      }
+    }
+
+    if (!userId) {
+      logger.log('NOTIF', 'Postponing FCM token sync: waiting for user authentication.');
+      return;
+    }
+
+    const payload: Record<string, any> = {
+      fcm_token: data.fcmToken,
+      device_type: data.platform || 'android',
+      user_id: userId,
+    };
+    await apiClient.post('/notifications/token', payload);
   },
 
-  /**
-   * De-register the FCM token upon user logout.
-   */
   deleteFcmToken: async (data: DeleteFcmTokenRequest): Promise<void> => {
-    await apiClient.delete('/auth/fcm-token', { data });
+    await apiClient.delete('/notifications/token', { data });
   },
 };

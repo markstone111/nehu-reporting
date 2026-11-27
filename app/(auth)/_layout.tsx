@@ -22,7 +22,7 @@ export default function AuthLayout() {
 
   // If already logged in, skip auth screens and go straight to the app
   if (isAuthenticated) {
-    return <Redirect href="/(app)" />;
+    return <Redirect href="/" />;
   }
 
   return (

@@ -10,6 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { authApi } from '@/api/auth.api';
 import { SecureStorage, STORAGE_KEYS } from '@/services/storage.service';
+import { NotificationService } from '@/services/notification.service';
 import { useAuthStore, selectIsAuthenticated } from '@/store/auth.store';
 import { getErrorMessage } from '@/utils/error.utils';
 import { logger } from '@/utils/logger.utils';
@@ -42,7 +43,7 @@ export function useAuth() {
     setUser(response.user);
 
     // 3. Navigate into the authenticated tab application
-    router.replace('/(app)');
+    router.replace('/');
   };
 
   /**
@@ -62,6 +63,10 @@ export function useAuth() {
     mutationFn: (data: RegisterRequest) => authApi.register(data),
     onSuccess: async (response) => {
       await handleAuthSuccess(response);
+      NotificationService.notifyAccountRegistered({
+        name: response.user.name,
+        email: response.user.email,
+      });
     },
   });
 

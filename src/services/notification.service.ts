@@ -64,7 +64,8 @@ export const NotificationService = {
     try {
       await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES, {
         name: 'Grievance Resolution Updates',
-        description: 'Instant alerts when your reported grievance changes status or receives remarks.',
+        description:
+          'Instant alerts when your reported grievance changes status or receives remarks.',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#003DA5',
@@ -138,7 +139,11 @@ export const NotificationService = {
         const deviceTokenResult = await Notifications.getDevicePushTokenAsync();
         fcmToken = typeof deviceTokenResult.data === 'string' ? deviceTokenResult.data : null;
       } catch (fcmError) {
-        logger.warn('NOTIF', 'getDevicePushTokenAsync unavailable in current environment', fcmError);
+        logger.warn(
+          'NOTIF',
+          'getDevicePushTokenAsync unavailable in current environment',
+          fcmError,
+        );
       }
 
       if (!fcmToken) {
@@ -165,6 +170,13 @@ export const NotificationService = {
    * Sync active FCM token to the backend server
    */
   async syncTokenWithBackend(token: string): Promise<void> {
+    const accessToken = await SecureStorage.get(STORAGE_KEYS.ACCESS_TOKEN);
+    if (!accessToken) {
+      // User is not logged in yet — token is preserved in SecureStorage and syncs automatically on login
+      logger.log('NOTIF', 'Push token cached locally (will sync automatically on user login).');
+      return;
+    }
+
     try {
       await authApi.updateFcmToken({
         fcmToken: token,
@@ -172,8 +184,7 @@ export const NotificationService = {
       });
       logger.log('NOTIF', 'FCM token synced successfully with university backend.');
     } catch {
-      // Backend may be offline or user not logged in yet — safe to ignore
-      logger.log('NOTIF', 'Could not sync token with backend yet (saved locally for sync on login).');
+      logger.log('NOTIF', 'Could not sync token with backend yet.');
     }
   },
 
@@ -194,7 +205,8 @@ export const NotificationService = {
 
     try {
       return Notifications.addPushTokenListener(async (tokenData) => {
-        const fcmToken = typeof tokenData.data === 'string' ? tokenData.data : String(tokenData.data);
+        const fcmToken =
+          typeof tokenData.data === 'string' ? tokenData.data : String(tokenData.data);
         logger.log('NOTIF', `Token refreshed: ${fcmToken.substring(0, 15)}...`);
         await SecureStorage.set(STORAGE_KEYS.FCM_TOKEN, fcmToken);
         await this.syncTokenWithBackend(fcmToken);
@@ -213,5 +225,139 @@ export const NotificationService = {
       return {};
     }
     return rawData as NotificationPayload;
+  },
+
+  /**
+   * Display or schedule a local device notification immediately (sound, banner, vibration).
+   * Works on both Expo Go and Production / Dev Builds.
+   */
+  async displayLocalNotification(options: {
+    title: string;
+    body: string;
+    data?: NotificationPayload;
+    channelId?: string;
+  }): Promise<string | null> {
+    try {
+      await this.setupNotificationChannels();
+      const identifier = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: options.title,
+          body: options.body,
+          data: (options.data || {}) as Record<string, unknown>,
+          sound: true,
+          vibrate: [0, 250, 250, 250],
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          ...(options.channelId ? { channelId: options.channelId } : {}),
+        },
+        trigger: null, // immediate delivery
+      });
+      logger.log('NOTIF', `Local notification triggered [${identifier}]: ${options.title}`);
+      return identifier;
+    } catch (err) {
+      logger.warn('NOTIF', 'Failed to schedule local notification', err);
+      return null;
+    }
+  },
+
+  /**
+   * Trigger immediate system notification when user submits a grievance report
+   * (differentiates between new reports and AI-clustered duplicate reports).
+   */
+  async notifyGrievanceSubmitted(issue: {
+    id: string;
+    title: string;
+    category?: string;
+    location?: string;
+    isDuplicate?: boolean;
+  }): Promise<void> {
+    if (issue.isDuplicate) {
+      await this.displayLocalNotification({
+        title: 'Linked to Existing Report 🔗',
+        body: `"${issue.title}" matched an active campus grievance and was grouped for priority redressal.`,
+        channelId: NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES,
+        data: {
+          type: 'DUPLICATE_LINKED',
+          issueId: issue.id,
+          status: 'DUPLICATE_LINKED',
+          ...(issue.category ? { category: issue.category } : {}),
+        },
+      });
+      return;
+    }
+
+    await this.displayLocalNotification({
+      title: 'Grievance Registered ✅',
+      body: `"${issue.title}" has been submitted and queued for NEHU administration review.`,
+      channelId: NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES,
+      data: {
+        type: 'SUBMITTED',
+        issueId: issue.id,
+        status: 'SUBMITTED',
+        ...(issue.category ? { category: issue.category } : {}),
+      },
+    });
+  },
+
+  /**
+   * Trigger system notification when grievance status or technician assignment changes
+   */
+  async notifyGrievanceStatusUpdated(issue: {
+    id: string;
+    title: string;
+    status: string;
+    remarks?: string;
+  }): Promise<void> {
+    const normalized = issue.status.toUpperCase().replace(/\s+/g, '_');
+    const titleMap: Record<string, string> = {
+      UNDER_REVIEW: 'Grievance Under Review 👀',
+      ASSIGNED: 'Technician Assigned 🛠️',
+      IN_PROGRESS: 'Work In Progress ⚙️',
+      RESOLVED: 'Grievance Resolved ✅',
+      CLOSED: 'Grievance Closed 📁',
+      ESCALATED: 'Grievance Escalated 🚨',
+      REJECTED: 'Grievance Update ⚠️',
+      REOPENED: 'Grievance Reopened 🔄',
+    };
+
+    const friendlyTitle = titleMap[normalized] || `Grievance Update: ${issue.status}`;
+
+    await this.displayLocalNotification({
+      title: friendlyTitle,
+      body: issue.remarks || `Status of "${issue.title}" has been updated to ${issue.status}.`,
+      channelId: NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES,
+      data: {
+        type: normalized,
+        issueId: issue.id,
+        status: issue.status,
+      },
+    });
+  },
+
+  /**
+   * Trigger welcome notification on successful account registration
+   */
+  async notifyAccountRegistered(user: { name: string; email: string }): Promise<void> {
+    await this.displayLocalNotification({
+      title: 'Welcome to NEHU Redressal Portal 🎓',
+      body: `Hi ${user.name}, your account (${user.email}) is active. You will receive live grievance updates here.`,
+      channelId: NOTIFICATION_CHANNELS.CAMPUS_ADVISORIES,
+      data: {
+        type: 'ACCOUNT_REGISTERED',
+      },
+    });
+  },
+
+  /**
+   * Trigger notification when the AI Assistant completes a structured grievance draft
+   */
+  async notifyAiDraftReady(draftTitle: string): Promise<void> {
+    await this.displayLocalNotification({
+      title: 'AI Grievance Draft Ready ✨',
+      body: `Your draft "${draftTitle}" is ready for review and 1-tap submission.`,
+      channelId: NOTIFICATION_CHANNELS.GRIEVANCE_UPDATES,
+      data: {
+        type: 'AI_DRAFT_READY',
+      },
+    });
   },
 };

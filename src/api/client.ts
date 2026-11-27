@@ -26,7 +26,6 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios';
 import { useSettingsStore } from '@/store/settings.store';
-import { useAuthStore } from '@/store/auth.store';
 import { SecureStorage, STORAGE_KEYS } from '@/services/storage.service';
 import { API_TIMEOUTS } from '@/constants/limits';
 import { logger } from '@/utils/logger.utils';
@@ -139,9 +138,7 @@ const createApiClient = (): AxiosInstance => {
           }
           return instance(originalConfig);
         } catch {
-          // Refresh failed — force logout
-          await SecureStorage.clearAll();
-          useAuthStore.getState().clearAuth();
+          // Token refresh unavailable or failed; reject request without destroying active session
           return Promise.reject(normalizeError(error));
         }
       }
@@ -161,30 +158,96 @@ const createApiClient = (): AxiosInstance => {
  * Converts any Axios or network error into a consistent ApiError object.
  * This means UI components only ever deal with `{ code, message, field? }`.
  */
+function formatBackendErrorMessage(status: number, rawMessage?: string, rawCode?: string): { code: string; message: string } {
+  const lower = rawMessage?.toLowerCase() ?? '';
+
+  if (lower.includes('invalid credentials') || (status === 401 && !rawMessage)) {
+    return {
+      code: 'INVALID_CREDENTIALS',
+      message: 'Invalid email or password. Please check your credentials and try again.',
+    };
+  }
+  if (lower.includes('inactive')) {
+    return {
+      code: 'FORBIDDEN',
+      message: 'Your account is inactive. Please contact the NEHU Computer Centre.',
+    };
+  }
+  if (status === 409 || lower.includes('already exists')) {
+    return {
+      code: 'USER_EXISTS',
+      message: 'An account with this email or roll number already exists.',
+    };
+  }
+  if (status === 404) {
+    return {
+      code: rawCode ?? 'NOT_FOUND',
+      message: rawMessage || 'The requested resource was not found.',
+    };
+  }
+  if (status === 429) {
+    return {
+      code: 'RATE_LIMITED',
+      message: 'Too many requests. Please wait a moment and try again.',
+    };
+  }
+  if (status >= 500) {
+    return {
+      code: 'SERVER_ERROR',
+      message: 'Server error. Please try again shortly.',
+    };
+  }
+
+  return {
+    code: rawCode ?? `HTTP_${status}`,
+    message: rawMessage || 'An error occurred. Please try again.',
+  };
+}
+
 export function normalizeError(error: unknown): ApiError {
   if (axios.isAxiosError(error)) {
     const response = error.response;
 
     // Backend returned a structured error body
     if (response?.data && typeof response.data === 'object') {
-      const data = response.data as Partial<ApiError>;
+      const data = response.data as Record<string, unknown>;
+      const rawMessage =
+        (typeof data.message === 'string' && data.message.trim()) ||
+        (typeof data.error === 'string' && data.error.trim()) ||
+        (typeof data.detail === 'string' && data.detail.trim()) ||
+        undefined;
+      const rawCode = typeof data.code === 'string' ? data.code : undefined;
+
+      const formatted = formatBackendErrorMessage(response.status, rawMessage, rawCode);
+
       return {
-        code: data.code ?? `HTTP_${response.status}`,
-        message: data.message ?? 'An error occurred. Please try again.',
-        ...(data.field !== undefined && { field: data.field }),
-        ...(data.details !== undefined && { details: data.details }),
+        code: formatted.code,
+        message: formatted.message,
+        ...(typeof data.field === 'string' && { field: data.field }),
+        ...(data.details !== undefined && {
+          details: data.details as Record<string, string>,
+        }),
       };
     }
 
     // Network error (no response)
     if (error.code === 'ECONNABORTED') {
-      return { code: 'TIMEOUT', message: 'Request timed out. Check your connection.' };
+      return { code: 'TIMEOUT', message: 'Request timed out. Check your connection and try again.' };
     }
     if (!error.response) {
-      return { code: 'NETWORK_ERROR', message: 'No internet connection. Please try again.' };
+      return {
+        code: 'NETWORK_ERROR',
+        message: 'Unable to connect to the server. Please check your internet connection.',
+      };
     }
 
-    return { code: `HTTP_${response?.status ?? 'UNKNOWN'}`, message: error.message };
+    const formatted = formatBackendErrorMessage(response?.status ?? 500, error.message);
+    return { code: formatted.code, message: formatted.message };
+  }
+
+  // Already normalized ApiError
+  if (typeof error === 'object' && error !== null && 'code' in error && 'message' in error) {
+    return error as ApiError;
   }
 
   // Non-Axios error

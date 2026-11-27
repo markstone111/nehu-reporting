@@ -141,14 +141,16 @@ export default function MyIssuesScreen() {
         {/* List of Issues */}
         <FlatList
           data={filteredIssues}
+          extraData={`${activeTab}:${searchQuery}`}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <IssueCard issue={item} onPress={handleIssuePress} />}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={() => void refetch()}
               colors={[COLORS.primary]}
               tintColor={COLORS.primary}
             />

@@ -22,6 +22,7 @@ import { COLORS } from '@/constants/theme';
 export interface ScreenWrapperProps {
   readonly children: ReactNode;
   readonly scrollable?: boolean;
+  readonly avoidKeyboard?: boolean;
   readonly style?: StyleProp<ViewStyle>;
   readonly contentContainerStyle?: StyleProp<ViewStyle>;
   readonly edges?: readonly Edge[];
@@ -32,6 +33,7 @@ export interface ScreenWrapperProps {
 export function ScreenWrapper({
   children,
   scrollable = true,
+  avoidKeyboard = true,
   style,
   contentContainerStyle,
   edges = ['top', 'left', 'right'],
@@ -54,12 +56,16 @@ export function ScreenWrapper({
   return (
     <SafeAreaView edges={edges as Edge[]} style={[styles.container, { backgroundColor }, style]}>
       <StatusBar style={statusBarStyle} />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        {content}
-      </KeyboardAvoidingView>
+      {avoidKeyboard ? (
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        >
+          {content}
+        </KeyboardAvoidingView>
+      ) : (
+        content
+      )}
     </SafeAreaView>
   );
 }
