@@ -61,9 +61,10 @@ export default function IssueDetailScreen() {
     );
   }
 
-  const category = getCategoryById(issue.category);
-  const categoryLabel = category ? category.label : issue.category.replace('_', ' ');
-  const refCode = `#${issue.id.slice(0, 8).toUpperCase()}`;
+  const safeCategory = issue.category || 'General';
+  const category = getCategoryById(safeCategory);
+  const categoryLabel = category ? category.label : safeCategory.replace(/_/g, ' ');
+  const refCode = `#${(issue.id || 'UNKNOWN').slice(0, 8).toUpperCase()}`;
 
   return (
     <ScreenWrapper scrollable={false} backgroundColor={COLORS.gray50}>
@@ -162,8 +163,8 @@ export default function IssueDetailScreen() {
               <Ionicons name="location" size={16} color={COLORS.primary} />
               <Text style={styles.locationTitle}>Campus Location</Text>
             </View>
-            <Text style={styles.locationLabel}>{issue.location.label}</Text>
-            {issue.location.autoFetched && (
+            <Text style={styles.locationLabel}>{issue.location?.label ?? 'NEHU Campus'}</Text>
+            {issue.location?.autoFetched && (
               <View style={styles.gpsVerifiedRow}>
                 <Ionicons name="navigate-circle-outline" size={12} color={COLORS.success} />
                 <Text style={styles.gpsVerifiedText}>GPS coordinates verified</Text>

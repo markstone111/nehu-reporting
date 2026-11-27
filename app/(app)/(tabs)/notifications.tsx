@@ -24,7 +24,32 @@ import {
   useMarkAllNotificationsAsRead,
 } from '@/hooks/useNotifications';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '@/constants/theme';
+import type { BadgeVariant } from '@/components/common/Badge';
 import type { AppNotification } from '@/types/api.types';
+
+const VALID_BADGE_VARIANTS = new Set<BadgeVariant>([
+  'primary',
+  'secondary',
+  'success',
+  'warning',
+  'error',
+  'info',
+  'neutral',
+]);
+
+function resolveSafeIcon(icon?: string | null): keyof typeof Ionicons.glyphMap {
+  if (icon && icon in Ionicons.glyphMap) {
+    return icon as keyof typeof Ionicons.glyphMap;
+  }
+  return 'notifications-outline';
+}
+
+function resolveSafeBadgeVariant(variant?: string | null): BadgeVariant {
+  if (variant && VALID_BADGE_VARIANTS.has(variant as BadgeVariant)) {
+    return variant as BadgeVariant;
+  }
+  return 'primary';
+}
 
 type FilterTab = 'ALL' | 'GRIEVANCES' | 'ADMINISTRATIVE';
 
@@ -77,10 +102,10 @@ export default function NotificationsScreen() {
       markAsReadMutation.mutate(notif.id);
     }
 
-    if (notif.issueId) {
+    if (typeof notif.issueId === 'string' && notif.issueId.trim().length > 0) {
       router.push({
         pathname: '/(app)/issues/[id]',
-        params: { id: notif.issueId },
+        params: { id: notif.issueId.trim() },
       });
     }
   };
@@ -178,9 +203,14 @@ export default function NotificationsScreen() {
           </View>
         }
         renderItem={({ item }) => {
-          const iconName = (item.icon ?? 'notifications-outline') as keyof typeof Ionicons.glyphMap;
-          const badgeVariant = item.badgeVariant ?? 'primary';
-          const statusLabel = item.status ?? 'Notice';
+          const iconName = resolveSafeIcon(item.icon);
+          const badgeVariant = resolveSafeBadgeVariant(item.badgeVariant);
+          const statusLabel = item.status || 'Notice';
+          const safeTitle = item.title || 'Campus Update';
+          const safeMessage = item.message || '';
+          const safeTimestamp =
+            item.timestamp ||
+            (item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '');
 
           return (
             <Pressable onPress={() => handleNotificationPress(item)}>
@@ -196,18 +226,16 @@ export default function NotificationsScreen() {
                   <View style={styles.headerInfoCol}>
                     <View style={styles.badgeRow}>
                       <Badge label={statusLabel} variant={badgeVariant} size="sm" />
-                      <Text style={styles.timestampText}>
-                        {item.timestamp ?? new Date(item.createdAt).toLocaleDateString()}
-                      </Text>
+                      <Text style={styles.timestampText}>{safeTimestamp}</Text>
                     </View>
                     <Text style={styles.notifTitle} numberOfLines={2}>
-                      {item.title}
+                      {safeTitle}
                     </Text>
                   </View>
                   {!item.isRead && <View style={styles.unreadDot} />}
                 </View>
 
-                <Text style={styles.notifMessage}>{item.message}</Text>
+                {safeMessage ? <Text style={styles.notifMessage}>{safeMessage}</Text> : null}
               </Card>
             </Pressable>
           );

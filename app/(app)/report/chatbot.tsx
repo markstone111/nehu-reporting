@@ -8,17 +8,20 @@
  * for 1-tap submission.
  */
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   Alert,
+  type LayoutChangeEvent,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenWrapper } from '@/components/layout/ScreenWrapper';
@@ -41,8 +44,12 @@ const QUICK_PROMPTS = [
 
 export default function ChatbotReportScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
+  const [androidKeyboardOffset, setAndroidKeyboardOffset] = useState(0);
+  const baseContainerHeightRef = useRef<number>(0);
+  const currentContainerHeightRef = useRef<number>(0);
 
   const { messages, sessionState, isTyping, sendMessage, requestMoreDetails, resetSession } =
     useChatbot();
@@ -72,6 +79,48 @@ export default function ChatbotReportScreen() {
     });
     return () => cancelAnimationFrame(frameId);
   }, [messages.length, isTyping, sessionState.complete]);
+
+  // Keep latest message visible and lift input above keyboard on Android edge-to-edge
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      if (Platform.OS === 'android') {
+        const kbHeight = e.endCoordinates?.height ?? 0;
+        const heightShrink =
+          baseContainerHeightRef.current > 0 && currentContainerHeightRef.current > 0
+            ? baseContainerHeightRef.current - currentContainerHeightRef.current
+            : 0;
+        // Only apply manual padding if Android OS did not already resize the window
+        if (heightShrink < kbHeight * 0.5) {
+          setAndroidKeyboardOffset(Math.max(0, kbHeight - insets.bottom));
+        }
+      }
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      });
+    });
+
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      if (Platform.OS === 'android') {
+        setAndroidKeyboardOffset(0);
+      }
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [insets.bottom]);
+
+  const handleContainerLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const h = e.nativeEvent.layout.height;
+      currentContainerHeightRef.current = h;
+      if (androidKeyboardOffset === 0 && h > baseContainerHeightRef.current) {
+        baseContainerHeightRef.current = h;
+      }
+    },
+    [androidKeyboardOffset],
+  );
 
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
   const renderMessageItem = useCallback(
@@ -147,8 +196,60 @@ export default function ChatbotReportScreen() {
   const displayName = user?.name ?? 'NEHU Student';
   const roleDisplay = user?.role ? capitalize(user.role) : 'Verified Student';
 
+  const chatBody = (
+    <>
+      <FlatList
+        ref={flatListRef}
+        data={messages}
+        extraData={`${messages.length}:${isTyping}:${sessionState.complete}`}
+        keyExtractor={keyExtractor}
+        renderItem={renderMessageItem}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
+        windowSize={7}
+        ListFooterComponent={
+          <View>
+            {isTyping && <TypingIndicator />}
+
+            {sessionState.complete && sessionState.draftIssue && (
+              <DraftReviewCard
+                draft={sessionState.draftIssue}
+                onSubmit={handleSubmitDraft}
+                onKeepChatting={requestMoreDetails}
+                onReset={handleConfirmReset}
+                isSubmitting={submitIssueMutation.isPending}
+              />
+            )}
+          </View>
+        }
+      />
+
+      <ChatInput
+        onSend={sendMessage}
+        isTyping={isTyping}
+        disabled={isTyping}
+        placeholder={
+          sessionState.complete
+            ? 'Add more details or clarify anything...'
+            : 'Describe the problem in everyday words...'
+        }
+        quickPrompts={messages.length === 1 ? QUICK_PROMPTS : undefined}
+        onSelectPrompt={(prompt) => sendMessage(prompt)}
+      />
+    </>
+  );
+
   return (
-    <ScreenWrapper scrollable={false} backgroundColor={COLORS.gray50}>
+    <ScreenWrapper
+      scrollable={false}
+      avoidKeyboard={false}
+      edges={['top', 'bottom', 'left', 'right']}
+      backgroundColor={COLORS.gray50}
+    >
       <Header
         title="AI Grievance Assistant"
         subtitle="Conversational Issue Redressal"
@@ -175,55 +276,22 @@ export default function ChatbotReportScreen() {
         </Text>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.keyboardContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-      >
-        {/* Messages List */}
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={keyExtractor}
-          renderItem={renderMessageItem}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          removeClippedSubviews={Platform.OS === 'android'}
-          initialNumToRender={12}
-          maxToRenderPerBatch={8}
-          windowSize={7}
-          ListFooterComponent={
-            <View>
-              {isTyping && <TypingIndicator />}
-
-              {sessionState.complete && sessionState.draftIssue && (
-                <DraftReviewCard
-                  draft={sessionState.draftIssue}
-                  onSubmit={handleSubmitDraft}
-                  onKeepChatting={requestMoreDetails}
-                  onReset={handleConfirmReset}
-                  isSubmitting={submitIssueMutation.isPending}
-                />
-              )}
-            </View>
-          }
-        />
-
-        {/* Chat Input Bar */}
-        <ChatInput
-          onSend={sendMessage}
-          isTyping={isTyping}
-          disabled={isTyping}
-          placeholder={
-            sessionState.complete
-              ? 'Add more details or clarify anything...'
-              : 'Describe the problem in everyday words...'
-          }
-          quickPrompts={messages.length === 1 ? QUICK_PROMPTS : undefined}
-          onSelectPrompt={(prompt) => sendMessage(prompt)}
-        />
-      </KeyboardAvoidingView>
+      {Platform.OS === 'ios' ? (
+        <KeyboardAvoidingView
+          style={styles.keyboardContainer}
+          behavior="padding"
+          keyboardVerticalOffset={88}
+        >
+          {chatBody}
+        </KeyboardAvoidingView>
+      ) : (
+        <View
+          onLayout={handleContainerLayout}
+          style={[styles.keyboardContainer, { paddingBottom: androidKeyboardOffset }]}
+        >
+          {chatBody}
+        </View>
+      )}
     </ScreenWrapper>
   );
 }

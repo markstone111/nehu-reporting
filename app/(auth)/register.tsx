@@ -146,7 +146,7 @@ export default function RegisterScreen() {
     setIdCardImage(image);
     setOcrResult(null);
     setOcrVerified(false);
-    setOcrNotification('Verifying ID card with Cloud Run PP-OCRv6...');
+    setOcrNotification('Verifying your University ID card...');
 
     try {
       const ocrRes = await scanIdCardWithOcr(image.uri);

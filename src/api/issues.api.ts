@@ -16,9 +16,26 @@ import type {
   SubmitIssueResponse,
   Issue,
   IssueSummary,
+  IssueStatus,
   GetIssuesRequest,
   Paginated,
 } from '@/types/api.types';
+
+/**
+ * Normalize backend issue status strings (e.g. "open", "pending", "in_progress")
+ * into canonical uppercase mobile IssueStatus values.
+ */
+export function normalizeIssueStatus(rawStatus?: string | null): IssueStatus {
+  const s = (rawStatus || 'SUBMITTED').toUpperCase().trim();
+  if (s === 'OPEN' || s === 'PENDING' || s === 'SUBMITTED') return 'SUBMITTED';
+  if (s === 'UNDER_REVIEW' || s === 'REOPENED') return 'UNDER_REVIEW';
+  if (s === 'ASSIGNED') return 'ASSIGNED';
+  if (s === 'IN_PROGRESS') return 'IN_PROGRESS';
+  if (s === 'RESOLVED') return 'RESOLVED';
+  if (s === 'CLOSED' || s === 'REJECTED') return 'CLOSED';
+  if (s === 'ESCALATED') return 'ESCALATED';
+  return 'SUBMITTED';
+}
 
 /**
  * Mapping between mobile category identifiers and live Cloud SQL UUIDs / names
@@ -88,7 +105,7 @@ export const issuesApi = {
     const resData = response.data?.data || response.data;
     return {
       issueId: resData?.id || resData?.issueId,
-      status: (resData?.status || 'OPEN').toLowerCase() as any,
+      status: normalizeIssueStatus(resData?.status),
       isDuplicate: Boolean(resData?.is_duplicate || resData?.isDuplicate),
       linkedIssueId: resData?.parent_issue_id || resData?.linkedIssueId || null,
       message: response.data?.message || 'Grievance submitted successfully',
@@ -105,16 +122,23 @@ export const issuesApi = {
       queryParams.user_id = currentUser.id;
     }
 
-    const response = await apiClient.get<any>('/issues', { params: queryParams });
-    const rawData = response.data?.data || response.data?.issues || response.data || [];
+    const response = await apiClient.get<any>('/issues/my', { params: queryParams });
+    const rawData =
+      response.data?.data?.issues ||
+      response.data?.data ||
+      response.data?.issues ||
+      response.data ||
+      [];
     const list = Array.isArray(rawData) ? rawData : rawData.data || [];
 
     const items: IssueSummary[] = list.map((it: any) => ({
       id: it.id || it.issue_id,
       title: it.title,
-      status: (it.status || 'OPEN').toLowerCase() as any,
+      description: it.description || '',
+      status: normalizeIssueStatus(it.status),
       category: it.category_name || it.category || 'General',
       subcategory: it.subcategory_name || it.subcategory || null,
+      locationLabel: it.location || undefined,
       createdAt: it.created_at || new Date().toISOString(),
       updatedAt: it.updated_at || it.created_at || new Date().toISOString(),
       isDuplicate: Boolean(it.is_duplicate),
@@ -123,7 +147,7 @@ export const issuesApi = {
 
     return {
       data: items,
-      total: response.data?.total || items.length,
+      total: response.data?.data?.total || response.data?.total || items.length,
       page: params.page ?? 1,
       pageSize: params.pageSize ?? 20,
       hasNextPage: false,
@@ -140,10 +164,11 @@ export const issuesApi = {
     const rawTimeline = Array.isArray(it.timeline) ? it.timeline : [];
     const timeline = rawTimeline.map((ev: any, idx: number) => ({
       id: ev.id || `ev-${idx}`,
-      event: (ev.new_status || 'UPDATE') as any,
+      event: normalizeIssueStatus(ev.new_status) as any,
+      title: `Status: ${normalizeIssueStatus(ev.new_status).replace(/_/g, ' ')}`,
       message: ev.remarks || `Status updated to ${ev.new_status}`,
       timestamp: ev.created_at,
-      actor: ev.changed_by?.includes('ADMIN') ? ('ADMIN' as const) : ('STUDENT' as const),
+      actor: ev.changed_by?.includes('ADMIN') ? ('admin' as const) : ('user' as const),
       actorName: ev.changed_by,
     }));
 
@@ -151,7 +176,7 @@ export const issuesApi = {
       id: it.id,
       title: it.title,
       description: it.description,
-      status: (it.status || 'OPEN').toLowerCase() as any,
+      status: normalizeIssueStatus(it.status),
       category: it.category_name || 'General',
       subcategory: it.subcategory_name || null,
       location: {
