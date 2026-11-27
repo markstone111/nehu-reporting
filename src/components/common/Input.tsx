@@ -38,6 +38,7 @@ export interface InputProps {
   readonly multiline?: boolean;
   readonly numberOfLines?: number;
   readonly editable?: boolean;
+  readonly onFocus?: () => void;
   readonly containerStyle?: StyleProp<ViewStyle>;
   readonly inputStyle?: StyleProp<TextStyle>;
   readonly testID?: string;
@@ -61,6 +62,7 @@ export function Input({
   multiline = false,
   numberOfLines = 1,
   editable = true,
+  onFocus,
   containerStyle,
   inputStyle,
   testID,
@@ -113,7 +115,10 @@ export function Input({
           multiline={multiline}
           numberOfLines={numberOfLines}
           editable={editable}
-          onFocus={() => setIsFocused(true)}
+          onFocus={() => {
+            setIsFocused(true);
+            onFocus?.();
+          }}
           onBlur={() => setIsFocused(false)}
         />
 

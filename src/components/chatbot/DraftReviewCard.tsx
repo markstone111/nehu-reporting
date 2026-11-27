@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
-import { getCategoryById } from '@/constants/categories';
+import { getCategoryById, getSubcategoryById } from '@/constants/categories';
 import type { DraftIssue } from '@/types/api.types';
 import { COLORS, TYPOGRAPHY, SPACING, RADIUS } from '@/constants/theme';
 
@@ -32,6 +32,12 @@ export function DraftReviewCard({
 }: DraftReviewCardProps) {
   const category = getCategoryById(draft.category);
   const categoryLabel = category ? category.label : draft.category.replace('_', ' ');
+  const subcategory = draft.subcategory ? getSubcategoryById(draft.subcategory) : undefined;
+  const subcategoryLabel = subcategory
+    ? subcategory.label
+    : draft.subcategory
+      ? draft.subcategory.replace(/_/g, ' ')
+      : null;
 
   // Determine issue display label
   const issueTypeLabel = draft.department ? 'Department' : draft.hostel ? 'Hostel' : categoryLabel;
@@ -58,9 +64,16 @@ export function DraftReviewCard({
       <View style={styles.summaryGrid}>
         {/* Issue Type */}
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Issue :</Text>
+          <Text style={styles.summaryLabel}>Category :</Text>
           <Badge label={issueTypeLabel} variant="primary" size="sm" />
         </View>
+
+        {subcategoryLabel && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Subcategory :</Text>
+            <Badge label={subcategoryLabel} variant="neutral" size="sm" />
+          </View>
+        )}
 
         {/* Department (if applicable) */}
         {draft.department && (
