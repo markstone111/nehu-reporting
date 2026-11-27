@@ -91,7 +91,7 @@ export default function ChatbotReportScreen() {
             : 0;
         // Only apply manual padding if Android OS did not already resize the window
         if (heightShrink < kbHeight * 0.5) {
-          setAndroidKeyboardOffset(Math.max(0, kbHeight - insets.bottom));
+          setAndroidKeyboardOffset(kbHeight);
         }
       }
       requestAnimationFrame(() => {
@@ -247,7 +247,11 @@ export default function ChatbotReportScreen() {
     <ScreenWrapper
       scrollable={false}
       avoidKeyboard={false}
-      edges={['top', 'bottom', 'left', 'right']}
+      edges={
+        Platform.OS === 'android' && androidKeyboardOffset > 0
+          ? ['top', 'left', 'right']
+          : ['top', 'bottom', 'left', 'right']
+      }
       backgroundColor={COLORS.gray50}
     >
       <Header

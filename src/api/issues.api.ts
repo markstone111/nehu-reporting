@@ -11,6 +11,7 @@
 
 import { apiClient } from '@/api/client';
 import { useAuthStore } from '@/store/auth.store';
+import { getCategoryById, getSubcategoryById } from '@/constants/categories';
 import type {
   SubmitIssueRequest,
   SubmitIssueResponse,
@@ -84,21 +85,33 @@ export const issuesApi = {
       payload.student_id = currentUser.id;
     }
 
-    const catKey = (data.category || '').toUpperCase().trim();
-    if (DATABASE_CATEGORY_MAP[catKey]) {
-      payload.category_id = DATABASE_CATEGORY_MAP[catKey].id;
-      payload.category_name = DATABASE_CATEGORY_MAP[catKey].name;
-    } else if (catKey && /^[0-9a-fA-F-]{36}$/.test(catKey)) {
-      payload.category_id = catKey;
-    } else if (catKey) {
-      payload.category_name = data.category;
+    const resolvedCategory = getCategoryById(data.category);
+    if (resolvedCategory) {
+      payload.category_id = resolvedCategory.id;
+      payload.category_name = resolvedCategory.label;
+    } else {
+      const catKey = (data.category || '').toUpperCase().trim();
+      if (DATABASE_CATEGORY_MAP[catKey]) {
+        payload.category_id = DATABASE_CATEGORY_MAP[catKey].id;
+        payload.category_name = DATABASE_CATEGORY_MAP[catKey].name;
+      } else if (catKey && /^[0-9a-fA-F-]{36}$/.test(catKey)) {
+        payload.category_id = catKey;
+      } else if (data.category) {
+        payload.category_name = data.category;
+      }
     }
 
     const subVal = data.subcategory;
-    if (subVal && /^[0-9a-fA-F-]{36}$/.test(subVal)) {
-      payload.subcategory_id = subVal;
-    } else if (subVal) {
-      payload.subcategory_name = subVal;
+    if (subVal) {
+      const resolvedSub = getSubcategoryById(subVal);
+      if (resolvedSub) {
+        payload.subcategory_id = resolvedSub.id;
+        payload.subcategory_name = resolvedSub.label;
+      } else if (/^[0-9a-fA-F-]{36}$/.test(subVal)) {
+        payload.subcategory_id = subVal;
+      } else {
+        payload.subcategory_name = subVal;
+      }
     }
 
     const response = await apiClient.post<any>('/issues', payload);

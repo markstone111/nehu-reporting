@@ -14,7 +14,13 @@ import { geminiService } from '@/services/gemini.service';
 import { NotificationService } from '@/services/notification.service';
 import { logger } from '@/utils/logger.utils';
 import type { ChatMessage, ChatSessionState, DraftIssue } from '@/types/api.types';
-import { ISSUE_CATEGORIES, type CategoryId } from '@/constants/categories';
+import { ISSUE_CATEGORIES, CATEGORY_IDS, type CategoryId } from '@/constants/categories';
+import {
+  ALL_NEHU_LOCATIONS,
+  NEHU_LOCATIONS_BY_CATEGORY,
+  findCanonicalLocation,
+  searchMatchingLocations,
+} from '@/services/location.service';
 
 const INITIAL_GREETING: ChatMessage = {
   id: 'msg-welcome',
@@ -80,68 +86,62 @@ export function useChatbot() {
       setIsTyping(true);
       setError(null);
 
-      // Check for targeted presentation dialogue trees (Scenario 1 & 2)
-      const targeted = checkTargetedPresentationScenario(
-        userText,
-        sessionStateRef.current,
-        updatedMessages,
-      );
-
-      if (targeted) {
-        logger.log('CHATBOT', `Targeted Assistant: "${targeted.replyText}"`, {
-          complete: targeted.nextState.complete,
-          category: targeted.nextState.category,
-        });
-
-        setSessionId((prev) => prev ?? `session-${Date.now()}`);
-        setSessionState(targeted.nextState);
-
-        const botMsg: ChatMessage = {
-          id: `bot-${Date.now()}`,
-          role: 'assistant',
-          content: targeted.replyText,
-          timestamp: new Date().toISOString(),
-        };
-
-        setMessages((prev) => [...prev, botMsg]);
-        setIsTyping(false);
-        return;
-      }
-
       // 1. Try direct Gemini AI first if API key is configured
       if (geminiService.hasApiKey()) {
         try {
           const geminiResult = await geminiService.generateGrievanceTriage(updatedMessages);
           if (geminiResult) {
             setSessionId((prev) => prev ?? `gemini-session-${Date.now()}`);
+            const rawGeminiLoc =
+              geminiResult.draft?.location?.label?.trim() || geminiResult.location?.trim() || '';
+            const strictLocation = rawGeminiLoc
+              ? findCanonicalLocation(rawGeminiLoc, geminiResult.category) ??
+                findCanonicalLocation(rawGeminiLoc, null) ??
+                (findExplicitLocationInText(rawGeminiLoc, geminiResult.category as CategoryId) ||
+                  null)
+              : null;
+            const isActuallyComplete = Boolean(geminiResult.complete && strictLocation);
+
+            let finalReply = geminiResult.replyText;
+            if (geminiResult.complete && !strictLocation) {
+              const suggestions = searchMatchingLocations(
+                rawGeminiLoc || userText,
+                geminiResult.category,
+                4,
+              ).join(', ');
+              finalReply = suggestions
+                ? `Please pick an official NEHU Shillong location from the list (e.g. ${suggestions}).`
+                : 'Please specify an official NEHU Shillong building, hostel, or department from the campus list.';
+            }
+
             setSessionState({
               category: geminiResult.category,
               subcategory: geminiResult.subcategory ?? null,
-              collectedFields: ['category', 'location', 'description'],
-              pendingFields: geminiResult.complete ? [] : ['location'],
-              complete: geminiResult.complete,
-              draftIssue:
-                geminiResult.draft ||
-                (geminiResult.complete
-                  ? {
-                      title: userText.slice(0, 50),
-                      description: userText,
-                      category: geminiResult.category || 'OTHER',
-                      subcategory: geminiResult.subcategory || null,
-                      location: {
-                        label: geminiResult.location || 'Campus',
-                        latitude: null,
-                        longitude: null,
-                        autoFetched: false,
-                      },
-                    }
-                  : null),
+              collectedFields: isActuallyComplete
+                ? ['category', 'location', 'description']
+                : ['category'],
+              pendingFields: isActuallyComplete ? [] : ['location'],
+              complete: isActuallyComplete,
+              draftIssue: isActuallyComplete
+                ? {
+                    title: geminiResult.draft?.title || userText.slice(0, 50),
+                    description: geminiResult.draft?.description || userText,
+                    category: geminiResult.category || CATEGORY_IDS.CAMPUS_FACILITIES,
+                    subcategory: geminiResult.subcategory || null,
+                    location: {
+                      label: strictLocation!,
+                      latitude: geminiResult.draft?.location?.latitude ?? 25.6054,
+                      longitude: geminiResult.draft?.location?.longitude ?? 91.8988,
+                      autoFetched: false,
+                    },
+                  }
+                : null,
             });
 
             const botMsg: ChatMessage = {
               id: `gemini-${Date.now()}`,
               role: 'assistant',
-              content: geminiResult.replyText,
+              content: finalReply,
               timestamp: new Date().toISOString(),
             };
 
@@ -154,51 +154,26 @@ export function useChatbot() {
         }
       }
 
-      // 2. Try FastAPI microservice (with fast 6s timeout), else immediate local state machine
-      try {
-        const response = await chatbotApi.sendMessage({
-          sessionId,
-          message: userText,
-          sessionState: sessionStateRef.current,
-        });
+      // 2. Fall back immediately to instant local state machine (no dead 6s FastAPI roundtrip)
+      const simulated = simulateBotResponse(userText, sessionStateRef.current, updatedMessages);
 
-        logger.log('CHATBOT', `FastAPI Bot: "${response.botMessage}"`, {
-          complete: response.sessionState.complete,
-        });
+      logger.log('CHATBOT', `Simulator Bot: "${simulated.replyText}"`, {
+        complete: simulated.nextState.complete,
+        category: simulated.nextState.category,
+      });
 
-        setSessionId(response.sessionId);
-        setSessionState(response.sessionState);
+      setSessionId((prev) => prev ?? `demo-session-${Date.now()}`);
+      setSessionState(simulated.nextState);
 
-        const botMsg: ChatMessage = {
-          id: `bot-${Date.now()}`,
-          role: 'assistant',
-          content: response.botMessage,
-          timestamp: new Date().toISOString(),
-        };
+      const botMsg: ChatMessage = {
+        id: `bot-${Date.now()}`,
+        role: 'assistant',
+        content: simulated.replyText,
+        timestamp: new Date().toISOString(),
+      };
 
-        setMessages((prev) => [...prev, botMsg]);
-      } catch {
-        const simulated = simulateBotResponse(userText, sessionStateRef.current, updatedMessages);
-
-        logger.log('CHATBOT', `Simulator Bot: "${simulated.replyText}"`, {
-          complete: simulated.nextState.complete,
-          category: simulated.nextState.category,
-        });
-
-        setSessionId((prev) => prev ?? `demo-session-${Date.now()}`);
-        setSessionState(simulated.nextState);
-
-        const botMsg: ChatMessage = {
-          id: `bot-${Date.now()}`,
-          role: 'assistant',
-          content: simulated.replyText,
-          timestamp: new Date().toISOString(),
-        };
-
-        setMessages((prev) => [...prev, botMsg]);
-      } finally {
-        setIsTyping(false);
-      }
+      setMessages((prev) => [...prev, botMsg]);
+      setIsTyping(false);
     },
     [sessionId],
   );
@@ -258,428 +233,311 @@ export function useChatbot() {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Targeted Presentation Scenarios (Scenario 1: IT Wi-Fi, Scenario 2: Kyllang Water)
-// ---------------------------------------------------------------------------
-
-function checkTargetedPresentationScenario(
-  _currentUserText: string,
-  _currentState: ChatSessionState,
-  allMessages: readonly ChatMessage[],
-): { replyText: string; nextState: ChatSessionState } | null {
-  const userMessages = allMessages.filter((m) => m.role === 'user').map((m) => m.content);
-  const fullConversation = userMessages.join(' ').toLowerCase();
-
-  // -------------------------------------------------------------------------
-  // Scenario 1: Academic / IT Department Wi-Fi Outage Flow
-  // -------------------------------------------------------------------------
-  const isWifiProblem =
-    fullConversation.includes('wifi') ||
-    fullConversation.includes('wi-fi') ||
-    fullConversation.includes('internet') ||
-    (fullConversation.includes('signal') && fullConversation.includes('unstable'));
-
-  if (isWifiProblem) {
-    // Specifically check for IT Department specification (avoid matching pronoun "it" in sentences)
-    const hasDept =
-      fullConversation.includes('it department') ||
-      fullConversation.includes('department of it') ||
-      fullConversation.includes('dept of it') ||
-      fullConversation.includes('information technology') ||
-      userMessages.some((m) => {
-        const t = m.trim().toLowerCase();
-        return (
-          t === 'it' ||
-          t === 'it dept' ||
-          t === 'it department' ||
-          t === 'dept of it' ||
-          t === 'information technology'
-        );
-      });
-
-    // Check if user has specified room / classroom / lab
-    const hasLocation =
-      fullConversation.includes('classroom') ||
-      fullConversation.includes('lab') ||
-      fullConversation.includes('7th sem') ||
-      fullConversation.includes('software eng');
-
-    // Turn 1: Wi-Fi reported, department not specified yet
-    if (!hasDept) {
-      return {
-        replyText: 'Which department is experiencing this issue?',
-        nextState: {
-          category: 'IT_SERVICES',
-          subcategory: 'IT_WIFI',
-          collectedFields: ['category'],
-          pendingFields: ['department', 'location'],
-          complete: false,
-          draftIssue: null,
-        },
-      };
-    }
-
-    // Turn 2: Department known (IT), classroom or lab needed
-    if (!hasLocation) {
-      return {
-        replyText: 'Is this occurring in a classroom or a lab?',
-        nextState: {
-          category: 'IT_SERVICES',
-          subcategory: 'IT_WIFI',
-          collectedFields: ['category', 'department'],
-          pendingFields: ['location'],
-          complete: false,
-          draftIssue: null,
-        },
-      };
-    }
-
-    // Turn 3: Room/lab provided -> synthesize official summary
-    let locLabel = '7th sem Classroom, Software Engineering Lab';
-    if (
-      fullConversation.includes('7th sem') &&
-      (fullConversation.includes('software') || fullConversation.includes('lab'))
+function detectCategoryAndSubcategory(
+  lower: string,
+  currentState: ChatSessionState,
+): { category: CategoryId; subcategory: string | null } {
+  // Hostel & Residential
+  if (
+    lower.includes('hostel') ||
+    lower.includes('warden') ||
+    lower.includes('mess') ||
+    lower.includes('geyser') ||
+    lower.includes('room') ||
+    lower.includes('kyllang') ||
+    lower.includes('umiam') ||
+    lower.includes('bh ') ||
+    lower.includes('gh ') ||
+    lower.includes('curfew')
+  ) {
+    let sub = '9fdcd1a9-efad-49c9-9552-6f8511548d45'; // Room Allotment & Cleanliness
+    if (lower.includes('mess') || lower.includes('food') || lower.includes('meal')) {
+      sub = '5b267187-0ec3-4dea-9e07-98ad2430e81a'; // Mess Food & Hygiene
+    } else if (
+      lower.includes('water') ||
+      lower.includes('geyser') ||
+      lower.includes('plumbing') ||
+      lower.includes('leak') ||
+      lower.includes('electric') ||
+      lower.includes('wifi') ||
+      lower.includes('wi-fi') ||
+      lower.includes('router') ||
+      lower.includes('fan') ||
+      lower.includes('light')
     ) {
-      locLabel = '7th sem Classroom, Software Engineering Lab';
-    } else if (fullConversation.includes('classroom') && fullConversation.includes('lab')) {
-      locLabel = '7th sem Classroom, Software Engineering Lab';
+      sub = '0bc346d3-716a-4fac-80a7-ce7d29836fbd'; // Maintenance & Hostel Wi-Fi
+    } else if (
+      lower.includes('curfew') ||
+      lower.includes('theft') ||
+      lower.includes('security') ||
+      lower.includes('unauthorized') ||
+      lower.includes('ragging')
+    ) {
+      sub = 'ebddeedf-57b5-45cd-8de5-5c31a849cb3d'; // Safety & Security
     }
-
-    const draft: DraftIssue = {
-      title: 'Wi-Fi Service Outage in IT Department',
-      description:
-        'Severe Wi-Fi connectivity outage persisting for 5 days in the IT Department. Following initial signal instability, network connectivity has completely ceased, halting academic and practical sessions in the 7th sem Classroom and Software Engineering Lab.',
-      category: 'IT_SERVICES',
-      subcategory: 'IT_WIFI',
-      department: 'IT',
-      location: {
-        label: locLabel,
-        latitude: 25.6054,
-        longitude: 91.8988,
-        autoFetched: false,
-      },
-    };
-
-    return {
-      replyText:
-        "I've synthesized your complaint into an official grievance draft below. Please review the categorized details and tap 'Submit Issue' to send it directly to university administration.",
-      nextState: {
-        category: 'IT_SERVICES',
-        subcategory: 'IT_WIFI',
-        collectedFields: ['category', 'department', 'location', 'description'],
-        pendingFields: [],
-        complete: true,
-        draftIssue: draft,
-      },
-    };
+    return { category: CATEGORY_IDS.HOSTEL, subcategory: sub };
   }
 
-  // -------------------------------------------------------------------------
-  // Scenario 2: Kyllang Hostel Drinking Water Shortage Flow
-  // -------------------------------------------------------------------------
-  const isKyllangProblem =
-    fullConversation.includes('kyllang') ||
-    (fullConversation.includes('hostel') &&
-      fullConversation.includes('water') &&
-      fullConversation.includes('filter'));
-
-  if (isKyllangProblem) {
-    // Note: Hostel name is already recognized as 'Kyllang Hostel', so the bot does NOT ask which hostel!
-    const hasFloor =
-      fullConversation.includes('floor') ||
-      fullConversation.includes('ground') ||
-      fullConversation.includes('2nd') ||
-      fullConversation.includes('first') ||
-      fullConversation.includes('second');
-
-    // Turn 1: Hostel is known (Kyllang Hostel), ask floor directly
-    if (!hasFloor) {
-      return {
-        replyText: 'Which floor(s) of Kyllang Hostel are affected by this issue?',
-        nextState: {
-          category: 'HOSTEL',
-          subcategory: 'HOSTEL_WATER',
-          collectedFields: ['category', 'hostel'],
-          pendingFields: ['floor'],
-          complete: false,
-          draftIssue: null,
-        },
-      };
+  // Library & Research Facilities
+  if (
+    lower.includes('library') ||
+    lower.includes('reading room') ||
+    lower.includes('book') ||
+    lower.includes('librarian') ||
+    lower.includes('journal')
+  ) {
+    let sub = 'c5369512-4b53-401f-8ca3-7033bca549cf'; // Reading Room Environment
+    if (
+      lower.includes('wifi') ||
+      lower.includes('wi-fi') ||
+      lower.includes('internet') ||
+      lower.includes('portal') ||
+      lower.includes('digital')
+    ) {
+      sub = '53fa3e88-086f-46ed-a87b-5828e3c2691c'; // Library Wi-Fi & Digital Resources
+    } else if (
+      lower.includes('book') ||
+      lower.includes('textbook') ||
+      lower.includes('borrow') ||
+      lower.includes('late fee')
+    ) {
+      sub = 'd69f7cfb-9a56-4336-91c7-44770b2c6154'; // Book Availability & Circulation
     }
-
-    // Turn 2: Floor specified -> synthesize official summary
-    let locLabel = 'Ground Floor, 2nd Floor';
-    if (fullConversation.includes('ground') && fullConversation.includes('2nd')) {
-      locLabel = 'Ground Floor, 2nd Floor';
-    } else if (fullConversation.includes('ground')) {
-      locLabel = 'Ground Floor';
-    } else if (fullConversation.includes('2nd')) {
-      locLabel = '2nd Floor';
-    }
-
-    const draft: DraftIssue = {
-      title: 'Drinking Water Shortage at Kyllang Hostel',
-      description:
-        'Drinking water shortage persisting for 1 month at Kyllang Hostel due to dysfunctional water filtration units. The single working filter cannot fulfill resident requirements. Urgent replacement of filter units requested for affected floors.',
-      category: 'HOSTEL',
-      subcategory: 'HOSTEL_WATER',
-      hostel: 'Kyllang Hostel',
-      location: {
-        label: locLabel,
-        latitude: 25.6054,
-        longitude: 91.8988,
-        autoFetched: false,
-      },
-    };
-
-    return {
-      replyText:
-        "I've synthesized your complaint into an official grievance draft below. Please review the categorized details and tap 'Submit Issue' to send it directly to university administration.",
-      nextState: {
-        category: 'HOSTEL',
-        subcategory: 'HOSTEL_WATER',
-        collectedFields: ['category', 'hostel', 'location', 'description'],
-        pendingFields: [],
-        complete: true,
-        draftIssue: draft,
-      },
-    };
+    return { category: CATEGORY_IDS.LIBRARY, subcategory: sub };
   }
 
-  return null;
+  // Sports & Gymnasium
+  if (
+    lower.includes('sport') ||
+    lower.includes('gym') ||
+    lower.includes('court') ||
+    lower.includes('ground') ||
+    lower.includes('stadium') ||
+    lower.includes('treadmill') ||
+    lower.includes('sac')
+  ) {
+    let sub = 'cdb4321c-18f9-4f61-be86-f4294d8998ce'; // Ground/Court Booking
+    if (
+      lower.includes('treadmill') ||
+      lower.includes('net') ||
+      lower.includes('weight') ||
+      lower.includes('equipment') ||
+      lower.includes('broken')
+    ) {
+      sub = '2ca4b831-69d0-43fa-8a7f-b7c051caa36c'; // Equipment Condition
+    } else if (
+      lower.includes('timing') ||
+      lower.includes('hour') ||
+      lower.includes('closed') ||
+      lower.includes('open')
+    ) {
+      sub = 'c20c72ff-c3cb-4ee5-8a41-9eaf1de2dd4b'; // Timings & Accessibility
+    }
+    return { category: CATEGORY_IDS.SPORTS, subcategory: sub };
+  }
+
+  // Academic & Department
+  if (
+    lower.includes('lab') ||
+    lower.includes('class') ||
+    lower.includes('faculty') ||
+    lower.includes('professor') ||
+    lower.includes('hod') ||
+    lower.includes('exam') ||
+    lower.includes('result') ||
+    lower.includes('attendance') ||
+    lower.includes('timetable') ||
+    lower.includes('department') ||
+    lower.includes('dept') ||
+    lower.includes('sot')
+  ) {
+    let sub = '255eefd1-3f22-49af-992b-a15d061a3242'; // Department Labs & Academic Wi-Fi
+    if (lower.includes('timetable') || lower.includes('attendance') || lower.includes('clash')) {
+      sub = 'f50e2f36-590f-44b7-8873-b97768dd80c2'; // Timetable & Attendance
+    } else if (lower.includes('exam') || lower.includes('result') || lower.includes('admit')) {
+      sub = '578f6b1c-1a40-4ac0-bdb2-c016188ba8d8'; // Exams, Results & Evaluation
+    } else if (
+      lower.includes('faculty') ||
+      lower.includes('professor') ||
+      lower.includes('teacher') ||
+      lower.includes('conduct')
+    ) {
+      sub = 'a80492c3-880b-4a4f-83ac-6519f6d78699'; // Faculty & Staff Conduct
+    }
+    return { category: CATEGORY_IDS.ACADEMIC, subcategory: sub };
+  }
+
+  // Campus & Facilities (Central Level)
+  if (
+    lower.includes('dustbin') ||
+    lower.includes('garbage') ||
+    lower.includes('waste') ||
+    lower.includes('washroom') ||
+    lower.includes('toilet') ||
+    lower.includes('sanitation') ||
+    lower.includes('dirty') ||
+    lower.includes('drinking water') ||
+    lower.includes('canteen') ||
+    lower.includes('cafeteria') ||
+    lower.includes('bus') ||
+    lower.includes('transport') ||
+    lower.includes('parking') ||
+    lower.includes('wifi') ||
+    lower.includes('wi-fi') ||
+    lower.includes('internet') ||
+    lower.includes('server') ||
+    lower.includes('portal')
+  ) {
+    let sub = 'f6b32c0e-7fce-4414-81c0-62207dc21beb'; // Hygiene & Sanitation
+    if (lower.includes('canteen') || lower.includes('cafeteria') || lower.includes('stall')) {
+      sub = '1fa23ab6-e6cf-4cc8-8062-ed83ad3bab7c'; // Canteen & Cafeteria
+    } else if (lower.includes('bus') || lower.includes('transport') || lower.includes('parking')) {
+      sub = 'c4486d91-dacc-43e7-8ba5-1275d6078808'; // Transport & Parking
+    } else if (
+      lower.includes('wifi') ||
+      lower.includes('wi-fi') ||
+      lower.includes('internet') ||
+      lower.includes('server') ||
+      lower.includes('portal')
+    ) {
+      sub = '4645ebbb-dbfb-44ce-9c47-44930f63cbee'; // Central IT & Escalations
+    }
+    return { category: CATEGORY_IDS.CAMPUS_FACILITIES, subcategory: sub };
+  }
+
+  return {
+    category: (currentState.category as CategoryId) ?? CATEGORY_IDS.CAMPUS_FACILITIES,
+    subcategory: currentState.subcategory ?? 'f6b32c0e-7fce-4414-81c0-62207dc21beb',
+  };
 }
 
-// ---------------------------------------------------------------------------
-// Local Intelligent Simulator (Fallback when FastAPI is offline)
-// ---------------------------------------------------------------------------
+function findExplicitLocationInText(text: string, categoryId: CategoryId): string {
+  const lower = text.toLowerCase();
+
+  // Check category-scoped canonical locations first, then all NEHU Shillong locations
+  const pools = [
+    ...(NEHU_LOCATIONS_BY_CATEGORY[categoryId] ?? []),
+    ...ALL_NEHU_LOCATIONS,
+  ];
+
+  for (const loc of pools) {
+    const locLower = loc.toLowerCase();
+    if (lower.includes(locLower)) {
+      return loc;
+    }
+    // Also match the core name before " (" or " —" (e.g. "Kyllang Hostel", "Football Ground")
+    const core = locLower.split(/\s*[—(]/)[0]?.trim() ?? '';
+    if (core.length >= 5 && lower.includes(core)) {
+      return loc;
+    }
+    // Match parenthesized hostel/block names like "(Syntuksiar)" or "(Umshing)"
+    const parenMatch = locLower.match(/\(([^)]+)\)/);
+    if (parenMatch) {
+      const alias = parenMatch[1].trim();
+      if (alias.length >= 5 && !alias.includes(',') && lower.includes(alias)) {
+        return loc;
+      }
+    }
+  }
+
+  // Common NEHU Shillong acronyms & shorthand — ONLY return exact strings from ALL_NEHU_LOCATIONS
+  if (/\bit dept\b/i.test(lower) || /\bit department\b/i.test(lower) || lower.includes('department of it')) {
+    return 'Department of Information Technology (School of Technology)';
+  }
+  if (/\bece\b/i.test(lower)) {
+    return 'Department of Electronics and Communication Engineering (School of Technology)';
+  }
+  if (/\bbme\b/i.test(lower)) {
+    return 'Department of Biomedical Engineering (School of Technology)';
+  }
+  if (/\bmca\b/i.test(lower) || lower.includes('computer applications')) {
+    return 'Department of Computer Applications (School of Technology)';
+  }
+  if (/\bsac\b/i.test(lower)) {
+    return 'Students Amenity Centre (SAC)';
+  }
+  if (/\bcentral library\b/i.test(lower) || /\bcyber room\b/i.test(lower)) {
+    return 'Central Library — Main Reading Rooms';
+  }
+  if (/\badmin block\b/i.test(lower) || /\badministrative building\b/i.test(lower)) {
+    return 'Administrative Building (Admin Block, Umshing)';
+  }
+  if (/\bdsw\b/i.test(lower)) {
+    return "Dean of Students' Welfare (DSW) Office";
+  }
+  if (/\bsaif\b/i.test(lower)) {
+    return 'Sophisticated Analytical Instrument Facility (SAIF-NEHU)';
+  }
+  if (/\bgym\b/i.test(lower) || /\bgymnasium\b/i.test(lower)) {
+    return 'University Gymnasium (Fitness Center)';
+  }
+  if (/\bkyllang\b/i.test(lower)) return 'Kyllang Halls of Residence (UG Men)';
+  if (/\bumiam\b/i.test(lower)) return 'Umiam Hall of Residence (Men)';
+  if (/\bumngot\b/i.test(lower)) return 'Umngot Hall of Residence (Men)';
+  if (/\bkupli\b/i.test(lower)) return 'Hostel No. 18: Kupli Halls of Residence (Men)';
+  if (/\bsymper\b/i.test(lower)) return 'Hostel No. 23: Symper Halls of Residence (UG Men)';
+  if (/\blasubon\b/i.test(lower)) return 'Hostel No. 1: Lasubon Halls of Residence (PG Women)';
+  if (/\bgolden jubilee\b/i.test(lower)) {
+    return 'Hostel No. 24: Golden Jubilee Girls Halls of Residence (UG/PG Women)';
+  }
+
+  return '';
+}
+
+function extractLocationLabel(
+  currentUserText: string,
+  fullConversationText: string,
+  categoryId: CategoryId,
+): string {
+  // Strictly return ONLY an exact canonical string from ALL_NEHU_LOCATIONS (no floor/room appended)
+  return (
+    findExplicitLocationInText(currentUserText, categoryId) ||
+    findExplicitLocationInText(fullConversationText, categoryId)
+  );
+}
 
 function simulateBotResponse(
   currentUserText: string,
   currentState: ChatSessionState,
   allMessages: readonly ChatMessage[],
 ): { replyText: string; nextState: ChatSessionState } {
-  // Check presentation scenarios first
-  const scenarioMatch = checkTargetedPresentationScenario(
-    currentUserText,
-    currentState,
-    allMessages,
-  );
-  if (scenarioMatch) {
-    return scenarioMatch;
-  }
-  // Collect all user messages in history to maintain rich context
   const userMessages = allMessages.filter((m) => m.role === 'user').map((m) => m.content);
-
   const fullConversationText = userMessages.join(' ');
   const lower = fullConversationText.toLowerCase();
 
-  // 1. Category & Subcategory Detection
-  let detectedCategory: CategoryId = (currentState.category as CategoryId) ?? 'OTHER';
-  let detectedSubcategory = currentState.subcategory;
+  const { category: detectedCategory, subcategory: detectedSubcategory } =
+    detectCategoryAndSubcategory(lower, currentState);
 
-  if (
-    lower.includes('dustbin') ||
-    lower.includes('overflow') ||
-    lower.includes('garbage') ||
-    lower.includes('waste') ||
-    lower.includes('trash') ||
-    lower.includes('litter') ||
-    lower.includes('smell') ||
-    lower.includes('stink') ||
-    lower.includes('washroom') ||
-    lower.includes('toilet') ||
-    lower.includes('clean') ||
-    lower.includes('sanitation') ||
-    lower.includes('dirty')
-  ) {
-    detectedCategory = 'HYGIENE';
-    if (lower.includes('washroom') || lower.includes('toilet')) {
-      detectedSubcategory = 'HYGIENE_WASHROOM';
-    } else if (
-      lower.includes('dustbin') ||
-      lower.includes('overflow') ||
-      lower.includes('garbage') ||
-      lower.includes('waste')
-    ) {
-      detectedSubcategory = 'HYGIENE_WASTE';
-    } else {
-      detectedSubcategory = 'HYGIENE_CAMPUS';
-    }
-  } else if (
-    lower.includes('water') ||
-    lower.includes('geyser') ||
-    lower.includes('mess') ||
-    lower.includes('food') ||
-    lower.includes('warden') ||
-    lower.includes('hostel') ||
-    lower.includes('room')
-  ) {
-    detectedCategory = 'HOSTEL';
-    if (lower.includes('water') || lower.includes('geyser')) detectedSubcategory = 'HOSTEL_WATER';
-    else if (lower.includes('mess') || lower.includes('food')) detectedSubcategory = 'HOSTEL_MESS';
-    else if (lower.includes('warden')) detectedSubcategory = 'HOSTEL_WARDEN';
-    else detectedSubcategory = 'HOSTEL_ROOM';
-  } else if (
-    lower.includes('wifi') ||
-    lower.includes('wi-fi') ||
-    lower.includes('internet') ||
-    lower.includes('portal') ||
-    lower.includes('computer') ||
-    lower.includes('lab') ||
-    lower.includes('printer')
-  ) {
-    detectedCategory = 'IT_SERVICES';
-    if (lower.includes('wifi') || lower.includes('internet')) detectedSubcategory = 'IT_WIFI';
-    else if (lower.includes('lab') || lower.includes('computer')) detectedSubcategory = 'IT_LAB';
-    else if (lower.includes('printer')) detectedSubcategory = 'IT_PRINTER';
-    else detectedSubcategory = 'IT_PORTAL';
-  } else if (
-    lower.includes('road') ||
-    lower.includes('street') ||
-    lower.includes('light') ||
-    lower.includes('electricity') ||
-    lower.includes('power cut') ||
-    lower.includes('lift') ||
-    lower.includes('pipe') ||
-    lower.includes('leak')
-  ) {
-    detectedCategory = 'INFRASTRUCTURE';
-    if (lower.includes('electricity') || lower.includes('light'))
-      detectedSubcategory = 'ELECTRICITY';
-    else if (lower.includes('road')) detectedSubcategory = 'ROAD';
-    else if (lower.includes('pipe') || lower.includes('leak')) detectedSubcategory = 'WATER';
-    else detectedSubcategory = 'BUILDING';
-  } else if (
-    lower.includes('ragging') ||
-    lower.includes('harass') ||
-    lower.includes('security') ||
-    lower.includes('guard') ||
-    lower.includes('threat')
-  ) {
-    detectedCategory = 'SAFETY';
-    if (lower.includes('ragging')) detectedSubcategory = 'SAFETY_RAGGING';
-    else if (lower.includes('harass')) detectedSubcategory = 'SAFETY_HARASSMENT';
-    else detectedSubcategory = 'SAFETY_SECURITY';
-  } else if (
-    lower.includes('class') ||
-    lower.includes('faculty') ||
-    lower.includes('exam') ||
-    lower.includes('attendance') ||
-    lower.includes('timetable')
-  ) {
-    detectedCategory = 'ACADEMICS';
-    if (lower.includes('faculty')) detectedSubcategory = 'ACADEMICS_FACULTY';
-    else if (lower.includes('exam')) detectedSubcategory = 'ACADEMICS_EXAM';
-    else detectedSubcategory = 'ACADEMICS_CLASS';
-  }
-
-  // 2. Campus Location & Landmark Extraction (Including common NEHU acronyms)
-  let detectedBuilding = '';
-  if (
-    lower.includes('sot') ||
-    lower.includes('s.o.t') ||
-    lower.includes('school of technology') ||
-    lower.includes('school of tech') ||
-    lower.includes('tech building') ||
-    lower.includes('tech block') ||
-    lower.includes('it dept') ||
-    lower.includes('engineering')
-  ) {
-    detectedBuilding = 'School of Technology (Engineering Block)';
-  } else if (
-    lower.includes('library') ||
-    lower.includes('central library') ||
-    lower.includes('reading hall')
-  ) {
-    detectedBuilding = 'Central Library';
-  } else if (
-    lower.includes('science complex') ||
-    lower.includes('physics') ||
-    lower.includes('chemistry')
-  ) {
-    detectedBuilding = 'Science Complex';
-  } else if (
-    lower.includes('admin') ||
-    lower.includes('vc office') ||
-    lower.includes('registrar')
-  ) {
-    detectedBuilding = 'Administration Block';
-  } else if (
-    lower.includes('bh 1') ||
-    lower.includes('bh1') ||
-    lower.includes('hostel 1') ||
-    lower.includes('boys hostel 1')
-  ) {
-    detectedBuilding = 'Boys Hostel Block 1';
-  } else if (
-    lower.includes('bh 2') ||
-    lower.includes('bh2') ||
-    lower.includes('hostel 2') ||
-    lower.includes('boys hostel 2')
-  ) {
-    detectedBuilding = 'Boys Hostel Block 2';
-  } else if (
-    lower.includes('bh 3') ||
-    lower.includes('bh3') ||
-    lower.includes('hostel 3') ||
-    lower.includes('boys hostel 3')
-  ) {
-    detectedBuilding = 'Boys Hostel Block 3';
-  } else if (
-    lower.includes('bh 4') ||
-    lower.includes('bh4') ||
-    lower.includes('hostel 4') ||
-    lower.includes('boys hostel 4')
-  ) {
-    detectedBuilding = 'Boys Hostel Block 4';
-  } else if (
-    lower.includes('gh 1') ||
-    lower.includes('gh1') ||
-    lower.includes('gh 2') ||
-    lower.includes('gh2') ||
-    lower.includes('girls hostel')
-  ) {
-    detectedBuilding = 'Girls Hostel Cluster';
-  } else if (lower.includes('health') || lower.includes('clinic')) {
-    detectedBuilding = 'NEHU Health Centre';
-  } else if (lower.includes('sac')) {
-    detectedBuilding = 'Student Activity Centre (SAC)';
-  }
-
-  // Floor / Room extraction
-  let detectedFloorOrRoom = '';
-  if (lower.includes('ground floor') || lower.includes('gf')) detectedFloorOrRoom = 'Ground Floor';
-  else if (lower.includes('1st floor') || lower.includes('first floor'))
-    detectedFloorOrRoom = '1st Floor';
-  else if (lower.includes('2nd floor') || lower.includes('second floor'))
-    detectedFloorOrRoom = '2nd Floor';
-  else if (lower.includes('3rd floor') || lower.includes('third floor'))
-    detectedFloorOrRoom = '3rd Floor';
-  else if (lower.includes('4th floor') || lower.includes('fourth floor'))
-    detectedFloorOrRoom = '4th Floor';
-
-  const roomMatch = lower.match(/room\s*#?\s*([0-9a-zA-Z]+)/);
-  if (roomMatch) {
-    detectedFloorOrRoom = detectedFloorOrRoom
-      ? `${detectedFloorOrRoom}, Room ${roomMatch[1].toUpperCase()}`
-      : `Room ${roomMatch[1].toUpperCase()}`;
-  }
-
-  // Combine building + floor
-  let locationLabel = detectedBuilding;
-  if (locationLabel && detectedFloorOrRoom) {
-    locationLabel = `${detectedBuilding}, ${detectedFloorOrRoom}`;
-  } else if (!locationLabel && detectedFloorOrRoom) {
-    locationLabel = `${detectedFloorOrRoom}, NEHU Campus`;
-  }
+  const locationLabel = extractLocationLabel(
+    currentUserText,
+    fullConversationText,
+    detectedCategory,
+  );
 
   const categoryMeta = ISSUE_CATEGORIES.find((c) => c.id === detectedCategory);
-  const categoryLabel = categoryMeta ? categoryMeta.label : detectedCategory;
+  const categoryLabel = categoryMeta ? categoryMeta.label : 'Campus and Facilities';
 
-  // If location is still unknown and we have fewer than 2 turns, ask for location
-  if (!locationLabel && userMessages.length < 2 && !currentState.complete) {
+  // Do NOT invent a location — if missing, ask the user for the exact campus location
+  if (!locationLabel) {
+    const alreadyAskedLocation = allMessages.some(
+      (m) =>
+        m.role === 'assistant' &&
+        m.id !== 'msg-welcome' &&
+        (m.content.toLowerCase().includes('which specific') ||
+          m.content.toLowerCase().includes('location')),
+    );
+
+    const sampleLocations = (NEHU_LOCATIONS_BY_CATEGORY[detectedCategory] ?? [])
+      .slice(0, 3)
+      .join(', ');
+    const examplesHint = sampleLocations ? ` (e.g. ${sampleLocations})` : '';
+
+    const replyText = alreadyAskedLocation
+      ? `I couldn't match that to a NEHU Shillong building or hostel yet. Please name the exact campus location${examplesHint}.`
+      : `Got it — this falls under **${categoryLabel}**. Which specific NEHU Shillong location is affected${examplesHint}?`;
+
     return {
-      replyText: `Understood, that falls under **${categoryLabel}**. Which campus building, hostel, or department is this occurring in (e.g. SoT, Boys Hostel 2, Central Library)?`,
+      replyText,
       nextState: {
         category: detectedCategory,
         subcategory: detectedSubcategory,
@@ -691,28 +549,44 @@ function simulateBotResponse(
     };
   }
 
-  // 3. Draft Generation with Full Historical Context
-  const finalLocation = locationLabel || 'NEHU Campus, Shillong';
+  // If the user only typed a location without describing any problem, ask for the issue details
+  const hasIssueDescription =
+    userMessages.length > 1 ||
+    currentUserText.trim().length > locationLabel.length + 6 ||
+    /(not working|broken|issue|problem|dirty|leak|no water|slow|down|missing|fault|smell|overflow|damage|delay|clash|absent|harass|theft)/i.test(
+      fullConversationText,
+    );
 
-  // Construct realistic, informative title
-  let generatedTitle = `${categoryLabel} issue at ${finalLocation}`;
-  if (lower.includes('dustbin') || lower.includes('overflow')) {
-    generatedTitle = `Overflowing dustbins reported at ${finalLocation}`;
-  } else if (lower.includes('geyser') || (lower.includes('water') && lower.includes('hostel'))) {
-    generatedTitle = `Water supply / geyser breakdown at ${finalLocation}`;
-  } else if (lower.includes('wifi') || lower.includes('internet')) {
-    generatedTitle = `Wi-Fi connectivity dropouts in ${finalLocation}`;
-  } else if (lower.includes('streetlight') || lower.includes('light')) {
-    generatedTitle = `Electrical lighting fault reported at ${finalLocation}`;
+  if (!hasIssueDescription) {
+    return {
+      replyText: `Got it, location noted as **${locationLabel}**. Could you briefly describe what the issue is?`,
+      nextState: {
+        category: detectedCategory,
+        subcategory: detectedSubcategory,
+        collectedFields: ['category', 'location'],
+        pendingFields: ['description'],
+        complete: false,
+        draftIssue: null,
+      },
+    };
   }
 
-  // Construct description preserving original student statements
+  let generatedTitle = `${categoryLabel} issue at ${locationLabel}`;
+  if (lower.includes('dustbin') || lower.includes('overflow')) {
+    generatedTitle = `Overflowing dustbins at ${locationLabel}`;
+  } else if (lower.includes('geyser') || (lower.includes('water') && lower.includes('hostel'))) {
+    generatedTitle = `Water supply / geyser issue at ${locationLabel}`;
+  } else if (lower.includes('wifi') || lower.includes('wi-fi') || lower.includes('internet')) {
+    generatedTitle = `Wi-Fi connectivity issue at ${locationLabel}`;
+  } else if (lower.includes('light') || lower.includes('electric')) {
+    generatedTitle = `Electrical lighting fault at ${locationLabel}`;
+  }
+
   const initialStatement = userMessages[0] ?? currentUserText;
   const additionalStatements = userMessages.slice(1).join('. ');
-
   const generatedDescription = additionalStatements
-    ? `${initialStatement}. Additional details: ${additionalStatements}. Priority redressal requested at ${finalLocation}.`
-    : `${initialStatement}. Priority redressal requested at ${finalLocation}.`;
+    ? `${initialStatement}. ${additionalStatements}.`
+    : initialStatement;
 
   const draft: DraftIssue = {
     title: generatedTitle,
@@ -720,7 +594,7 @@ function simulateBotResponse(
     category: detectedCategory,
     subcategory: detectedSubcategory,
     location: {
-      label: finalLocation,
+      label: locationLabel,
       latitude: 25.6054,
       longitude: 91.8988,
       autoFetched: false,
@@ -729,8 +603,8 @@ function simulateBotResponse(
 
   const isUpdate = userMessages.length > 2 || currentState.draftIssue !== null;
   const replyText = isUpdate
-    ? "I've updated your grievance draft with the new details below. Please review the updated summary and tap 'Confirm & Submit'."
-    : "I've synthesized your complaint into an official grievance draft below. Please review the categorized details and tap 'Confirm & Submit' to send it directly to university administration.";
+    ? "I've updated your grievance draft below with the new details. Tap 'Submit Issue' when you're ready to send it."
+    : "I've prepared your grievance draft below. Please review the details and tap 'Submit Issue' to send it to the concerned authority.";
 
   return {
     replyText,

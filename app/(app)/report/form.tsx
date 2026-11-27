@@ -13,7 +13,7 @@
  *   - Immediate navigation to grievance timeline tracking upon submission
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -34,7 +34,12 @@ import { Badge } from '@/components/common/Badge';
 import { CategoryPicker } from '@/components/issue';
 import { useAuthStore } from '@/store/auth.store';
 import { useSubmitIssue } from '@/hooks/useIssues';
-import { getCurrentCampusLocation, CAMPUS_LANDMARKS } from '@/services/location.service';
+import {
+  getCurrentCampusLocation,
+  getLocationsForCategory,
+  searchMatchingLocations,
+  findCanonicalLocation,
+} from '@/services/location.service';
 import {
   validateIssueTitle,
   validateIssueCategory,
@@ -58,6 +63,7 @@ export default function ReportFormScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<CategoryId | null>(null);
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(null);
   const [locationLabel, setLocationLabel] = useState('');
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
   const [gpsLocation, setGpsLocation] = useState<IssueLocation | null>(null);
   const [isFetchingGps, setIsFetchingGps] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
@@ -77,7 +83,22 @@ export default function ReportFormScreen() {
   const isWordCountTooShort = wordCount > 0 && wordCount < LIMITS.ISSUE_DESCRIPTION_MIN_WORDS;
   const isWordCountTooLong = wordCount > LIMITS.ISSUE_DESCRIPTION_MAX_WORDS;
 
-  // Handle GPS Auto-Detection
+  const categoryLocations = useMemo(
+    () => getLocationsForCategory(selectedCategoryId),
+    [selectedCategoryId],
+  );
+
+  const locationSuggestions = useMemo(
+    () => searchMatchingLocations(locationLabel, selectedCategoryId, 8),
+    [locationLabel, selectedCategoryId],
+  );
+
+  const isLocationAccepted = useMemo(
+    () => findCanonicalLocation(locationLabel, selectedCategoryId) !== null,
+    [locationLabel, selectedCategoryId],
+  );
+
+  // Handle GPS Auto-Detection (captures coordinates while keeping official NEHU location selection)
   const handleAutoDetectLocation = async () => {
     setIsFetchingGps(true);
     setGpsError(null);
@@ -90,7 +111,6 @@ export default function ReportFormScreen() {
     }
 
     setGpsLocation(result.location);
-    setLocationLabel(result.location.label);
     if (locationError) setLocationError(null);
   };
 
@@ -100,6 +120,7 @@ export default function ReportFormScreen() {
     setSelectedCategoryId(null);
     setSelectedSubcategoryId(null);
     setLocationLabel('');
+    setShowLocationSuggestions(false);
     setGpsLocation(null);
     setIsFetchingGps(false);
     setGpsError(null);
@@ -110,15 +131,16 @@ export default function ReportFormScreen() {
     setDescriptionError(null);
   }, []);
 
-  // Quick landmark chip tap
+  // Quick landmark / suggestion tap
   const handleSelectLandmark = (landmark: string) => {
     setLocationLabel(landmark);
-    setGpsLocation({
+    setShowLocationSuggestions(false);
+    setGpsLocation((prev) => ({
       label: landmark,
-      latitude: 25.6054,
-      longitude: 91.8988,
-      autoFetched: false,
-    });
+      latitude: prev?.latitude ?? 25.6054,
+      longitude: prev?.longitude ?? 91.8988,
+      autoFetched: prev?.autoFetched ?? false,
+    }));
     if (locationError) setLocationError(null);
   };
 
@@ -126,8 +148,15 @@ export default function ReportFormScreen() {
   const handleSubmit = async () => {
     // Run validation on all fields
     const tErr = validateIssueTitle(title);
-    const cErr = validateIssueCategory(selectedCategoryId);
-    const lErr = validateIssueLocation(locationLabel);
+    let cErr = validateIssueCategory(selectedCategoryId);
+    if (!cErr && !selectedSubcategoryId) {
+      cErr = 'Please select a specific subcategory.';
+    }
+    let lErr = validateIssueLocation(locationLabel);
+    const canonicalLoc = findCanonicalLocation(locationLabel, selectedCategoryId);
+    if (!lErr && !canonicalLoc) {
+      lErr = 'Please select a valid NEHU Shillong campus location from the suggestions.';
+    }
     const dErr = validateIssueDescription(description);
 
     setTitleError(tErr);
@@ -149,7 +178,7 @@ export default function ReportFormScreen() {
       subcategory: selectedSubcategoryId ?? null,
       description: description.trim(),
       location: {
-        label: locationLabel.trim(),
+        label: canonicalLoc!,
         latitude: gpsLocation?.latitude ?? null,
         longitude: gpsLocation?.longitude ?? null,
         autoFetched: gpsLocation?.autoFetched ?? false,
@@ -283,8 +312,14 @@ export default function ReportFormScreen() {
             onSelectCategory={(catId) => {
               setSelectedCategoryId(catId);
               if (categoryError) setCategoryError(null);
+              if (locationLabel && !findCanonicalLocation(locationLabel, catId)) {
+                setLocationLabel('');
+              }
             }}
-            onSelectSubcategory={setSelectedSubcategoryId}
+            onSelectSubcategory={(subId) => {
+              setSelectedSubcategoryId(subId);
+              if (categoryError) setCategoryError(null);
+            }}
             error={categoryError}
           />
         </Card>
@@ -319,18 +354,69 @@ export default function ReportFormScreen() {
             </Pressable>
           </View>
 
-          {/* Location input text */}
+          {/* Location input text with live NEHU autocomplete */}
           <Input
-            placeholder="e.g. Room 302, 3rd Floor, Department of IT"
+            placeholder="Start typing hostel, department, library, or facility..."
             value={locationLabel}
             onChangeText={(text) => {
               setLocationLabel(text);
+              setShowLocationSuggestions(true);
               if (locationError) setLocationError(null);
             }}
+            onFocus={() => setShowLocationSuggestions(true)}
             error={locationError}
             maxLength={LIMITS.ISSUE_LOCATION_LABEL_MAX_CHARS}
             leftIcon={<Ionicons name="location-outline" size={18} color={COLORS.primary} />}
+            rightIcon={
+              locationLabel.length > 0 ? (
+                <Pressable
+                  onPress={() => {
+                    setLocationLabel('');
+                    setShowLocationSuggestions(true);
+                  }}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close-circle" size={18} color={COLORS.gray400} />
+                </Pressable>
+              ) : null
+            }
           />
+
+          {/* Matching NEHU Campus Location Suggestions */}
+          {showLocationSuggestions && !isLocationAccepted && (
+            <View style={styles.suggestionsBox}>
+              {locationSuggestions.length > 0 ? (
+                locationSuggestions.map((item) => (
+                  <Pressable
+                    key={item}
+                    onPress={() => handleSelectLandmark(item)}
+                    style={({ pressed }) => [
+                      styles.suggestionRow,
+                      pressed && { backgroundColor: COLORS.primarySubtle },
+                    ]}
+                  >
+                    <Ionicons name="location" size={14} color={COLORS.primary} />
+                    <Text style={styles.suggestionText}>{item}</Text>
+                  </Pressable>
+                ))
+              ) : (
+                <View style={styles.noMatchRow}>
+                  <Ionicons name="alert-circle-outline" size={14} color={COLORS.error} />
+                  <Text style={styles.noMatchText}>
+                    No matching NEHU Shillong location found. Only official campus locations are accepted.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Verified Location Confirmation Badge */}
+          {isLocationAccepted && (
+            <View style={styles.gpsSuccessNotice}>
+              <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
+              <Text style={styles.gpsSuccessText}>Verified NEHU Campus Location</Text>
+            </View>
+          )}
 
           {/* GPS feedback status */}
           {gpsLocation?.autoFetched && (
@@ -350,24 +436,47 @@ export default function ReportFormScreen() {
             </View>
           )}
 
-          {/* Quick NEHU Landmark selection */}
+          {/* Quick NEHU Landmark selection (scoped to selected category) */}
           <View style={styles.landmarksSection}>
-            <Text style={styles.landmarksHeading}>Quick Campus Landmarks:</Text>
+            <Text style={styles.landmarksHeading}>
+              {selectedCategoryId ? 'Locations for Selected Category:' : 'Official NEHU Locations:'}
+            </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.landmarksScroll}
             >
-              {CAMPUS_LANDMARKS.map((landmark) => (
-                <Pressable
-                  key={landmark}
-                  onPress={() => handleSelectLandmark(landmark)}
-                  style={styles.landmarkChip}
-                >
-                  <Ionicons name="business-outline" size={12} color={COLORS.gray600} />
-                  <Text style={styles.landmarkChipText}>{landmark}</Text>
-                </Pressable>
-              ))}
+              {categoryLocations.map((landmark) => {
+                const isActive = locationLabel === landmark;
+                return (
+                  <Pressable
+                    key={landmark}
+                    onPress={() => handleSelectLandmark(landmark)}
+                    style={[
+                      styles.landmarkChip,
+                      isActive && {
+                        backgroundColor: COLORS.primarySubtle,
+                        borderColor: COLORS.primary,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="business-outline"
+                      size={12}
+                      color={isActive ? COLORS.primary : COLORS.gray600}
+                    />
+                    <Text
+                      style={[
+                        styles.landmarkChipText,
+                        isActive && { color: COLORS.primary, fontFamily: TYPOGRAPHY.fontFamily.semiBold },
+                      ]}
+                    >
+                      {landmark}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           </View>
         </Card>
@@ -670,5 +779,43 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.error,
     paddingHorizontal: SPACING.xs,
+  },
+  suggestionsBox: {
+    marginTop: -SPACING.xs,
+    marginBottom: SPACING.sm,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs + 2,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.gray100,
+  },
+  suggestionText: {
+    flex: 1,
+    fontFamily: TYPOGRAPHY.fontFamily.medium,
+    fontSize: TYPOGRAPHY.fontSize.xs + 1,
+    color: COLORS.gray800,
+  },
+  noMatchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs + 2,
+    padding: SPACING.md,
+    backgroundColor: COLORS.errorLight,
+  },
+  noMatchText: {
+    flex: 1,
+    fontFamily: TYPOGRAPHY.fontFamily.medium,
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.error,
+    lineHeight: 16,
   },
 });
